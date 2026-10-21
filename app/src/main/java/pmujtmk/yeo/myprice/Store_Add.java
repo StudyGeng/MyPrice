@@ -37,6 +37,7 @@ import com.chaquo.python.PyObject;
 import com.chaquo.python.Python;
 import com.chaquo.python.android.AndroidPlatform;
 import com.google.android.material.chip.Chip;
+import com.google.firebase.auth.FirebaseAuth;
 import com.journeyapps.barcodescanner.ScanContract;
 import com.journeyapps.barcodescanner.ScanOptions;
 
@@ -62,6 +63,11 @@ public class Store_Add extends AppCompatActivity implements DatePickerDialog.OnD
         super.onCreate(savedInstanceState);
         AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_NO);
         setContentView(R.layout.activity_store_add);
+        if (FirebaseAuth.getInstance().getCurrentUser() == null) {
+            startActivity(new Intent(this, Login.class));
+            finish();
+            return;
+        }
         LoadingDialog loadingDialog = new LoadingDialog(Store_Add.this);
         MessageDialog messageDialog = new MessageDialog(Store_Add.this);
         Vibrator v = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
@@ -77,7 +83,12 @@ public class Store_Add extends AppCompatActivity implements DatePickerDialog.OnD
         Python py = Python.getInstance();
         final PyObject Database_py = py.getModule("Database");
         final PyObject Tools_py = py.getModule("Tools");
-        StoreID = Database_py.callAttr("GetLoggedIn_ID").toString();
+        StoreID = FirebaseAuth.getInstance().getCurrentUser().getUid();
+        if (!StoreID.equals(Database_py.callAttr("GetLoggedIn_ID").toString())) {
+            startActivity(new Intent(this, Login.class));
+            finish();
+            return;
+        }
 
         ImageValue = "Not Available";
 
@@ -481,44 +492,38 @@ public class Store_Add extends AppCompatActivity implements DatePickerDialog.OnD
                         }
                     }
 
-                    String email = Database_py.callAttr("GetLoggedIn_Email").toString();
-                    String password = Database_py.callAttr("GetLoggedIn_Password").toString();
                     loadingDialog.Start("Registering New Item...");
                     new Thread() {
                         public void run() {
-                            Boolean registeredBarcode = null;
+                            boolean registeredBarcode = false;
                             String UniqueID = null;
-                            int LoginResult;
+                            boolean completed = false;
                             try {
-                                LoginResult = Database_py.callAttr("Login", email, password).toInt();
-                                if (LoginResult == 0) {
-                                    registeredBarcode = Database_py.callAttr("CheckRegisteredBarcode", StoreID, Barcode).toBoolean();
-
-                                    if (!registeredBarcode) {
-                                        UniqueID = Database_py.callAttr("RegisterItem", StoreID, Barcode, Name, Price, all_discount, all_limit,
-                                                member_discount, member_limit, start_day, end_day, ImageValue).toString();
-                                    }
+                                if (!StoreID.equals(FirebaseBridge.getUid())) {
+                                    throw new IllegalStateException("Store session changed");
                                 }
+                                registeredBarcode = Database_py.callAttr("CheckRegisteredBarcode", StoreID, Barcode).toBoolean();
+                                if (!registeredBarcode) {
+                                    UniqueID = Database_py.callAttr("RegisterItem", StoreID, Barcode, Name, Price, all_discount, all_limit,
+                                            member_discount, member_limit, start_day, end_day, ImageValue).toString();
+                                }
+                                completed = true;
+                            } catch (Exception e) {
+                                completed = false;
                             }
-                            catch (Exception e){
-                                LoginResult = 3;
-                            }
-                            try {
-                                String UniqueID_ = UniqueID;
-                                Boolean finalRegisteredBarcode = registeredBarcode;
-                                int finalLoginResult = LoginResult;
-                                runOnUiThread(new Runnable() {
+                            String UniqueID_ = UniqueID;
+                            boolean finalRegisteredBarcode = registeredBarcode;
+                            boolean finalCompleted = completed;
+                            runOnUiThread(new Runnable() {
                                     @SuppressLint("SetTextI18n")
                                     @Override
                                     public void run() {
                                         loadingDialog.Dismiss();
-                                        switch (finalLoginResult) {
-                                            case 0:
-                                                // Login Success
+                                        if (finalCompleted) {
                                                 if (!finalRegisteredBarcode) {
-                                                    Toast.makeText(Store_Add.this, "New Item Registered!", Toast.LENGTH_LONG).show();
                                                     Database_py.callAttr("AddNewItem", UniqueID_, Barcode, Name, Price, all_discount, all_limit,
                                                             member_discount, member_limit, start_day, end_day, ImageValue);
+                                                    Toast.makeText(Store_Add.this, "New Item Registered!", Toast.LENGTH_LONG).show();
                                                     Reset();
                                                 } else {
                                                     Dialog dialog = new Dialog(Store_Add.this);
@@ -547,53 +552,14 @@ public class Store_Add extends AppCompatActivity implements DatePickerDialog.OnD
                                                         }
                                                     });
                                                     dialog.show();
-                                                }break;
-
-                                            case 1:
-                                                // Login Error: Email changed/Account deleted
-                                                // Go to Login
-                                                loadingDialog.Dismiss();
-                                                messageDialog.Show("error", "Your account might has been deleted or your email has been changed."); // Display error message
-                                                Button btn_close = messageDialog.dialog.findViewById(R.id.btn_close_msg);
-                                                btn_close.setOnClickListener(new View.OnClickListener() {
-                                                    @Override
-                                                    public void onClick(View view) {
-                                                        messageDialog.Dismiss();
-                                                        startActivity(new Intent(Store_Add.this, Login.class));
-                                                    }
-                                                });
-                                                break;
-
-                                            case 2:
-                                                // Login Error: Password changed
-                                                // Go to Login
-                                                loadingDialog.Dismiss();
-                                                messageDialog.Show("error", "Your password has been changed."); // Display error message
-                                                Button btn_close2 = messageDialog.dialog.findViewById(R.id.btn_close_msg);
-                                                btn_close2.setOnClickListener(new View.OnClickListener() {
-                                                    @Override
-                                                    public void onClick(View view) {
-                                                        messageDialog.Dismiss();
-                                                        startActivity(new Intent(Store_Add.this, Login.class));
-                                                    }
-                                                });
-                                                break;
-
-                                            default:
-                                                // Login error: No Internet Connection
-                                                loadingDialog.Dismiss();
-                                                messageDialog.Show("error", "No Internet Connection"); // Display error message
-                                                Button btn_close3 = messageDialog.dialog.findViewById(R.id.btn_close_msg);
-                                                btn_close3.setOnClickListener(new View.OnClickListener() {
-                                                    @Override
-                                                    public void onClick(View view) {
-                                                        messageDialog.Dismiss();
-                                                    }
-                                                });
+                                                }
+                                        } else {
+                                            messageDialog.Show("error", "Could not save item. Check your connection and store approval.");
+                                            Button close = messageDialog.dialog.findViewById(R.id.btn_close_msg);
+                                            close.setOnClickListener(buttonView -> messageDialog.Dismiss());
                                         }
                                     }
                                 });
-                            } catch (final Exception ex) {}
                         }
                     }.start();
                 }
@@ -650,21 +616,36 @@ public class Store_Add extends AppCompatActivity implements DatePickerDialog.OnD
         new Thread(){
             @Override
             public void run() {
-                String ID = Database_py.callAttr("GetUniqueID", StoreID, Barcode).toString();
-                System.out.println("Unique ID:"+ ID);
-                Database_py.callAttr("UpdateItemInformation", StoreID, ID, Barcode, Name, Price, all_discount, all_limit, member_discount, member_limit, start_day, end_day, ImageValue);
-                try{
-                    runOnUiThread(new Runnable() {
-                        @Override
-                        public void run() {
-                            loadingDialog.Dismiss();
-                            Toast.makeText(Store_Add.this, "Item Updated!", Toast.LENGTH_LONG).show();
-                            Database_py.callAttr("UpdateItem", ID, Barcode, Name, Price, all_discount, all_limit, member_discount, member_limit, start_day, end_day, ImageValue);
-                            Reset();
-                        }
-                    });
+                String ID = null;
+                boolean updated = false;
+                try {
+                    if (!StoreID.equals(FirebaseBridge.getUid())) {
+                        throw new IllegalStateException("Store session changed");
+                    }
+                    ID = Database_py.callAttr("GetUniqueID", StoreID, Barcode).toString();
+                    if (ID == null || ID.isEmpty() || ID.equals("None")) {
+                        throw new IllegalStateException("Item no longer exists");
+                    }
+                    Database_py.callAttr("UpdateItemInformation", StoreID, ID, Barcode, Name, Price, all_discount, all_limit, member_discount, member_limit, start_day, end_day, ImageValue);
+                    updated = true;
+                } catch (Exception e) {
+                    updated = false;
                 }
-                catch (final Exception ex){}
+                String finalID = ID;
+                boolean finalUpdated = updated;
+                runOnUiThread(() -> {
+                    loadingDialog.Dismiss();
+                    if (finalUpdated) {
+                        Database_py.callAttr("UpdateItem", finalID, Barcode, Name, Price, all_discount, all_limit, member_discount, member_limit, start_day, end_day, ImageValue);
+                        Toast.makeText(Store_Add.this, "Item Updated!", Toast.LENGTH_LONG).show();
+                        Reset();
+                    } else {
+                        MessageDialog messageDialog = new MessageDialog(Store_Add.this);
+                        messageDialog.Show("error", "Could not update item. Check your connection and store approval.");
+                        Button close = messageDialog.dialog.findViewById(R.id.btn_close_msg);
+                        close.setOnClickListener(v -> messageDialog.Dismiss());
+                    }
+                });
             }
         }.start();
     }

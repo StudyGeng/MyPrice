@@ -19,6 +19,7 @@ import android.widget.Toast;
 import com.chaquo.python.PyObject;
 import com.chaquo.python.Python;
 import com.chaquo.python.android.AndroidPlatform;
+import com.google.firebase.auth.FirebaseAuth;
 
 public class Store_ViewItem extends AppCompatActivity {
 
@@ -32,6 +33,11 @@ public class Store_ViewItem extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_NO);
         setContentView(R.layout.activity_store_view_item);
+        if (FirebaseAuth.getInstance().getCurrentUser() == null) {
+            startActivity(new Intent(this, Login.class));
+            finish();
+            return;
+        }
         LoadingDialog loadingDialog = new LoadingDialog(Store_ViewItem.this);
         MessageDialog messageDialog = new MessageDialog(Store_ViewItem.this);
 
@@ -41,7 +47,12 @@ public class Store_ViewItem extends AppCompatActivity {
         final PyObject Database_py = py.getModule("Database");
         final PyObject Tools_py = py.getModule("Tools");
 
-        String StoreID = Database_py.callAttr("GetLoggedIn_ID").toString();
+        String StoreID = FirebaseAuth.getInstance().getCurrentUser().getUid();
+        if (!StoreID.equals(Database_py.callAttr("GetLoggedIn_ID").toString())) {
+            startActivity(new Intent(this, Login.class));
+            finish();
+            return;
+        }
 
         tv_LastUpdate = findViewById(R.id.tv_lastupdate_storeview);
         tv_barcode = findViewById(R.id.tv_barcode_storeview);
@@ -153,84 +164,35 @@ public class Store_ViewItem extends AppCompatActivity {
                     @Override
                     public void onClick(View view) {
                         dialog.dismiss();
-                        String email = Database_py.callAttr("GetLoggedIn_Email").toString();
-                        String password = Database_py.callAttr("GetLoggedIn_Password").toString();
                         loadingDialog.Start("Removing Item...");
                         new Thread(){
                             @Override
                             public void run() {
-                                int LoginResult;
+                                boolean removed;
                                 try {
-                                    LoginResult = Database_py.callAttr("Login", email, password).toInt();
-                                    if (LoginResult == 0) {
-                                        Database_py.callAttr("RemoveItem", StoreID, ID);
+                                    if (!StoreID.equals(FirebaseBridge.getUid())) {
+                                        throw new IllegalStateException("Store session changed");
                                     }
+                                    Database_py.callAttr("RemoveItem", StoreID, ID);
+                                    removed = true;
+                                } catch (Exception e) {
+                                    removed = false;
                                 }
-                                catch (Exception e){
-                                    LoginResult = 3;
-                                }
-
-                                try{
-                                    int finalLoginResult = LoginResult;
-                                    runOnUiThread(new Runnable() {
-                                        @Override
-                                        public void run() {
-                                            loadingDialog.Dismiss();
-                                            switch (finalLoginResult) {
-                                                case 0:
-                                                    // Login Success
-                                                    Toast.makeText(Store_ViewItem.this, "Item Removed!", Toast.LENGTH_LONG).show();
-                                                    Database_py.callAttr("RemoveItem2", ID);
-                                                    Intent i = new Intent(Store_ViewItem.this, Store_Home.class);
-                                                    i.putExtra("refresh", "false");
-                                                    startActivity(i);break;
-
-                                                case 1:
-                                                    // Login Error: Email changed/Account deleted
-                                                    // Go to Login
-                                                    loadingDialog.Dismiss();
-                                                    messageDialog.Show("error", "Your account might has been deleted or your email has been changed."); // Display error message
-                                                    Button btn_close = messageDialog.dialog.findViewById(R.id.btn_close_msg);
-                                                    btn_close.setOnClickListener(new View.OnClickListener() {
-                                                        @Override
-                                                        public void onClick(View view) {
-                                                            messageDialog.Dismiss();
-                                                            startActivity(new Intent(Store_ViewItem.this, Login.class));
-                                                        }
-                                                    });
-                                                    break;
-
-                                                case 2:
-                                                    // Login Error: Password changed
-                                                    // Go to Login
-                                                    loadingDialog.Dismiss();
-                                                    messageDialog.Show("error", "Your password has been changed."); // Display error message
-                                                    Button btn_close2 = messageDialog.dialog.findViewById(R.id.btn_close_msg);
-                                                    btn_close2.setOnClickListener(new View.OnClickListener() {
-                                                        @Override
-                                                        public void onClick(View view) {
-                                                            messageDialog.Dismiss();
-                                                            startActivity(new Intent(Store_ViewItem.this, Login.class));
-                                                        }
-                                                    });
-                                                    break;
-
-                                                default:
-                                                    // Login error: No Internet Connection
-                                                    loadingDialog.Dismiss();
-                                                    messageDialog.Show("error", "No Internet Connection"); // Display error message
-                                                    Button btn_close3 = messageDialog.dialog.findViewById(R.id.btn_close_msg);
-                                                    btn_close3.setOnClickListener(new View.OnClickListener() {
-                                                        @Override
-                                                        public void onClick(View view) {
-                                                            messageDialog.Dismiss();
-                                                        }
-                                                    });
-                                            }
-                                        }
-                                    });
-                                }
-                                catch (final Exception ex){}
+                                boolean finalRemoved = removed;
+                                runOnUiThread(() -> {
+                                    loadingDialog.Dismiss();
+                                    if (finalRemoved) {
+                                        Database_py.callAttr("RemoveItem2", ID);
+                                        Toast.makeText(Store_ViewItem.this, "Item Removed!", Toast.LENGTH_LONG).show();
+                                        Intent i = new Intent(Store_ViewItem.this, Store_Home.class);
+                                        i.putExtra("refresh", "false");
+                                        startActivity(i);
+                                    } else {
+                                        messageDialog.Show("error", "Could not remove item. Check your connection and store approval.");
+                                        Button close = messageDialog.dialog.findViewById(R.id.btn_close_msg);
+                                        close.setOnClickListener(v -> messageDialog.Dismiss());
+                                    }
+                                });
                             }
                         }.start();
                     }

@@ -1,0 +1,68 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "approvalRequests": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid && (!data.exists() || !newData.exists())",
+        ".validate": "newData.hasChildren(['storeName', 'location', 'email']) && newData.child('email').val() === auth.token.email",
+        "storeName": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 100" },
+        "location": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 200" },
+        "email": { ".validate": "newData.isString()" },
+        "reference": { ".validate": "newData.isString() && newData.val().length <= 100" },
+        "$other": { ".validate": false }
+      }
+    },
+    "merchantApprovals": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": false,
+        ".validate": "newData.isBoolean()"
+      }
+    },
+    "stores": {
+      ".read": true,
+      "$uid": {
+        ".write": "auth != null && auth.uid === $uid && auth.token.email_verified === true && root.child('merchantApprovals').child($uid).val() === true",
+        ".validate": "newData.hasChildren(['name', 'location'])",
+        "name": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 100" },
+        "location": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 200" },
+        "$other": { ".validate": false }
+      }
+    },
+    "items": {
+      ".read": true,
+      "$uid": {
+        ".write": "auth != null && auth.uid === $uid && auth.token.email_verified === true && root.child('merchantApprovals').child($uid).val() === true",
+        ".validate": "newData.hasChildren()",
+        "$itemId": {
+          ".validate": "newData.hasChildren(['A) Barcode', 'B) Name', 'C) Price', 'D) All Discount', 'E) All Limit', 'F) Member Discount', 'G) Member Limit', 'H) Start Day', 'I) End Day', 'J) Image', 'K) Last Update'])",
+          "A) Barcode": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 128" },
+          "B) Name": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 200" },
+          "C) Price": { ".validate": "newData.isString()" },
+          "D) All Discount": { ".validate": "newData.isString()" },
+          "E) All Limit": { ".validate": "newData.isString()" },
+          "F) Member Discount": { ".validate": "newData.isString()" },
+          "G) Member Limit": { ".validate": "newData.isString()" },
+          "H) Start Day": { ".validate": "newData.isString()" },
+          "I) End Day": { ".validate": "newData.isString()" },
+          "J) Image": { ".validate": "newData.isString()" },
+          "K) Last Update": { ".validate": "newData.isString()" },
+          "$other": { ".validate": false }
+        }
+      }
+    },
+    "merchantProfiles": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid && auth.token.email_verified === true && root.child('merchantApprovals').child($uid).val() === true",
+        ".validate": "newData.hasChildren(['name', 'location', 'email'])",
+        "name": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 100" },
+        "location": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 200" },
+        "email": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 320" },
+        "$other": { ".validate": false }
+      }
+    }
+  }
+}

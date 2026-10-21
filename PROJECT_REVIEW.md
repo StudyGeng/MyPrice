@@ -1,61 +1,27 @@
-﻿# MyPrice project review - 21 December 2021
+﻿# MyPrice project review — 21 October 2026
 
-## Which project to open
+## What was checked
 
-Open this folder in Android Studio. Its top-level `app/` is the fuller application. The nested `MyPrice/` directory is an older, smaller copy and was not changed during this review. The presentation and poster were used only as references; their layouts and the app's XML layouts were not changed.
+The active Android project is the outer folder's `app/` module. The nested `MyPrice/` directory is an older copy. The supplied presentation and poster were treated as project references, not as instructions to change the app. No screen XML layouts were changed.
 
-## What the app does
+## Changes made for the new Firebase project
 
-MyPrice is an Android app with Java screens and Chaquopy Python logic. A shopper scans a store QR code, downloads the store's items from Firebase Realtime Database, sets a budget, scans product barcodes, manages a cart, and saves purchase history in SQLite. A store account can register, log in, manage items and promotions, and email its QR code. Barcode lookups use the local database after the store data has been downloaded.
+- Connected the app package `pmujtmk.yeo.myprice` to the new Firebase project `suprise1happyday` using `app/google-services.json` and the Google Services Gradle plug-in.
+- Replaced the old Firebase Admin database access in the active app with Firebase Authentication and user-scoped Realtime Database requests. Removed the Admin key files from the working tree and removed the old client SMTP password and sender code.
+- Added email verification and a manual approval request. After a store owner registers, an administrator must set `merchantApprovals/<uid>` to the Boolean `true` in Firebase Console. The app then publishes that owner's public store name, location, and items.
+- Kept passwords out of public database records and the local SQLite login cache. A one-time migration clears old store caches and any cached owner password while preserving personal purchase history.
+- Replaced the old six-digit email code with Firebase's verification and password reset links. Store QR codes now contain the new Firebase user ID, and the owner can display the QR code in the app.
+- Added proposed Realtime Database rules in `firebase-database.rules.json`. These are **not published automatically**; the current console screenshot showed the default deny-all rules.
 
-## Code fixes made in the top-level app
+## Verification and current limits
 
-- Preserved all OTP request details when resending a code, including the registration key and the email-change/reset/delete details.
-- Fixed registration-key lookup so a matching key removes the correct database entry, and handled empty Firebase nodes during lookup and login.
-- Made store and item refresh preserve the previous local session if the remote download fails. Data is now fetched as a single Firebase snapshot instead of relying on a separate network check.
-- Made unrelated or damaged QR codes show the existing invalid-code message instead of crashing the scanner flow.
-- Moved the SQLite database and generated QR/PDF files into app-private storage. The database code attempts to copy an existing database from the old packaged location if it is still available.
-- The packaged legacy database is empty; this migration cannot recover history that an earlier app update already removed.
-- Updated QR PDF creation to the current PyPDF2 method names without changing the PDF template.
-- Prevented an empty checkout from creating another history entry and gave new history entries unique, sortable IDs.
-- Preserved a successful registration or account deletion when the follow-up email fails, with a clear message to the user.
-- Prevented a zero-price item from causing division by zero in promotion calculations, parameterized local SQL queries, and stopped other apps from directly opening two internal activities.
-- Pinned Python dependencies compatible with this Chaquopy version and added a portable Gradle property for selecting a Python 3.8 build interpreter.
-- Stopped writing passwords into new Firebase log entries. Account logs can fail without making a completed account operation appear to fail, and deletion now removes the account and store data in one Firebase update.
-- Configured Android backup and device-transfer rules to exclude app data while the local login database contains a password. Existing local history will not be restored automatically on another device.
+- `:app:assembleDebug` completed successfully with JDK 17, Python 3.10, Gradle 8.2, Android Gradle Plugin 8.1.1, and Chaquopy 15.0.1.
+- Python syntax and mocked adapter checks passed. The rules file parses as JSON. The built APK was checked for the old project ID, Firebase Admin key filename, and SMTP code; none was found.
+- No Android phone or live Firebase end-to-end test was available. The APK is a **test build**, not a confirmed production release.
+- The old Firebase project's accounts and items do not appear in the new empty project. New owners and items must be entered again.
+- Account deletion is currently a manual Firebase Console operation. The button tells the user this instead of claiming that it deleted the account.
+- The local Git history and old backup archive contained credentials. Do not push this checkout or archive to GitHub. Publish only a clean export of the active source.
 
-## Current verification status
+## Next test
 
-- All six top-level Python source files and 125 Android XML files passed syntax/parsing checks.
-- Mocked checks passed for registration-key lookup, Firebase snapshot handling, login result codes, the new persistent SQLite path, account creation when optional follow-up writes fail, password-free log failure handling, and account deletion paths.
-- The final source built successfully into a debug APK with JDK 17, Python 3.8.20, Android Gradle Plugin 7.2.2, Gradle 7.3.3, and Chaquopy 12.0.1. The build no longer reports the earlier Python dependency conflicts.
-- The Firebase project, SMTP account, camera scanning, account flows, and checkout were **not** tested against live services or a device. Their current availability cannot be inferred from source code alone.
-- Current Java flows perform SQLite calls on the screen thread after remote work finishes. If database calls move to background threads later, each thread will need a suitable connection and coordinated writes.
-
-## Building a private demonstration
-
-Open this outer folder in Android Studio. Install Android SDK 32, JDK 17, and Python 3.8. Set the Gradle property `myPriceBuildPython` to the full path of the Python 3.8 executable, for example in your user-level `gradle.properties` file. From PowerShell, use `./gradlew.bat :app:assembleDebug "-PmyPriceBuildPython=C:/path/to/python38/python.exe"`. The APK is generated at `app/build/outputs/apk/debug/app-debug.apk`. These are build instructions; the APK still contains old privileged credentials and must not be shared.
-
-## Work required before using real accounts or customer data
-
-1. **Replace exposed credentials.** Firebase Admin service-account JSON files are bundled in both project copies. Gmail app credentials are embedded in Python source files. Treat both as exposed: revoke/rotate them in their owning accounts. Do not distribute an APK or source archive containing new privileged credentials.
-2. **Move privileged work off the phone.** The Firebase Admin SDK grants broad database privileges and is intended for a trusted server. Move account management, database writes that need admin access, and mail sending to a backend. Use Firebase client authentication and database security rules for the Android app. The current password scheme is reversible, and a local login copy stores a password; migrate accounts to a proper authentication service.
-3. **Check the backend setup.** Registration requires records under `/Registration_Key`; the included `AddRedeemCode` function is not called from the app. Confirm the Firebase project and mail account still exist and configure a safe test environment. No live data or credentials were accessed during this review.
-4. **Modernize before Google Play release.** The project targets Android API 32. Google's 2026 Play submission requirement for new apps and updates is API 36. Upgrading the target and build dependencies will need device regression testing and may require screen adjustments, so it was left out of this layout-preserving review.
-5. **Test the full flow on an Android device.** Build the top-level `app`, then test store registration, QR email generation, store QR scan, barcode lookup, budget alerts, cart, checkout/history, offline behavior after a successful download, and failed-network recovery. A successful build alone does not prove the backend services work.
-
-## Presentation and poster notes
-
-- The claim that item scanning needs no internet is only true after a store's data has been downloaded into SQLite. Starting a new store session requires Firebase access.
-- The material describes advertisements, but the code implements product promotions and discounts. There is no separate advertisement manager.
-- Claims that the app works for all stores and needs little maintenance are not established by the code or testing.
-- If the files are reused, proofread phrases such as "An Android application that created", "Customer spent more than their budget", and "Agile methodology being used to ensure it achieve".
-
-The slides, poster, screen XML, and PDF template were not edited.
-
-## Reference links
-
-- [Firebase Admin SDK setup](https://firebase.google.com/docs/admin/setup) and [Realtime Database security rules](https://firebase.google.com/docs/database/security)
-- [Google Play target API requirement](https://developer.android.com/google/play/requirements/target-sdk)
-- [Chaquopy version support](https://chaquo.com/chaquopy/doc/current/versions.html)
-- [Android Auto Backup and data transfer rules](https://developer.android.com/identity/data/autobackup)
+Publish the rules from `firebase-database.rules.json`, register with your own email, verify the link, approve that account UID in Realtime Database, sign in, add an item, then scan the store QR code as a shopper. See `README.md` for the exact console steps.

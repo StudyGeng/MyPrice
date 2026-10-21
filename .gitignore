@@ -1,33 +1,22 @@
-# Local development and build output
-.gradle/
-.idea/
-**/build/
-**/local.properties
 *.iml
-.externalNativeBuild/
-.cxx/
-
-# Generated packages and signing material
-*.apk
-*.aab
+.gradle
+/local.properties
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+# Server credentials and signing keys must never be included in the Android app.
+**/*firebase-adminsdk*.json
+/app/google-services.json
 *.jks
 *.keystore
-*.p12
-*.pfx
-
-# Python caches and local data
-**/__pycache__/
-*.py[cod]
-*.db
-*.db-journal
-*.db-shm
-*.db-wal
-
-# Credentials must never be committed
-**/*firebase-adminsdk*.json
-app/src/main/python/Data/*.json
-.env
-*.env
-
-# Older incomplete project copy
-/MyPrice/
+__pycache__/
+*.pyc

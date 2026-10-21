@@ -1,43 +1,123 @@
-import os
-import firebase_admin
-from firebase_admin import credentials
-from firebase_admin import db
-from os.path import dirname, join
+"""Local SQLite data and Firebase Realtime Database access for MyPrice.
+
+Firebase Authentication runs in the Android app. This module sends its short-lived
+ID token with owner writes. No service-account credential belongs in an APK.
+"""
+
+import json
+import re
 import sqlite3
-import random
+import threading
 from datetime import date, datetime
-from cryptography.fernet import Fernet
+from urllib.parse import quote
+from urllib.request import Request, urlopen
 from Storage import database_path
 
-filename = os.environ.get("MYPRICE_FIREBASE_SERVICE_ACCOUNT", join(dirname(__file__), "Data/service-account.json"))
+DATABASE_URL = "https://suprise1happyday-default-rtdb.asia-southeast1.firebasedatabase.app"
 
-cred = credentials.Certificate(filename)
-firebase_admin.initialize_app(cred, {"databaseURL": os.environ.get("MYPRICE_FIREBASE_DATABASE_URL", "")})
 
-filename1 = database_path()
-connection = sqlite3.connect(filename1)
+class _ThreadLocalSQLite:
+    """Give each Android worker thread its own connection and cursor."""
+
+    def __init__(self, path):
+        self.path = path
+        self.local = threading.local()
+
+    def _current(self):
+        if not hasattr(self.local, "connection"):
+            self.local.connection = sqlite3.connect(self.path, timeout=20)
+            self.local.cursor = self.local.connection.cursor()
+        return self.local.connection
+
+    def cursor(self):
+        return self
+
+    def execute(self, sql, parameters=()):
+        self._current()
+        self.local.cursor.execute(sql, parameters)
+        return self
+
+    def fetchone(self):
+        self._current()
+        return self.local.cursor.fetchone()
+
+    def fetchall(self):
+        self._current()
+        return self.local.cursor.fetchall()
+
+    def commit(self):
+        self._current().commit()
+
+    def close(self):
+        if hasattr(self.local, "connection"):
+            self.local.connection.close()
+            del self.local.connection
+            del self.local.cursor
+
+
+connection = _ThreadLocalSQLite(database_path())
 cursor = connection.cursor()
 
-key_1 = os.environ.get("MYPRICE_PASSWORD_FERNET_KEY", "")
-key_2 = os.environ.get("MYPRICE_DATA_FERNET_KEY", "")
+
+def _migrate_old_account_cache():
+    # The former app stored an owner password in SQLite. Clear it and the
+    # defunct Firebase store cache once when switching to the new project.
+    version = cursor.execute("PRAGMA user_version").fetchone()[0]
+    if version < 2:
+        existing = {row[0] for row in cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+        for table in ("Account", "Item", "Shopping", "Cart", "Promotion",
+                      "Login", "StoreItem"):
+            if table in existing:
+                cursor.execute("DELETE FROM " + table)
+        cursor.execute("PRAGMA user_version = 2")
+        connection.commit()
+
+
+_migrate_old_account_cache()
+
+
+def _bridge():
+    from java import jclass
+    return jclass("pmujtmk.yeo.myprice.FirebaseBridge")
+
+
+def _identity(expected_uid=None):
+    bridge = _bridge()
+    uid = str(bridge.getUid() or "")
+    if not uid or (expected_uid is not None and uid != str(expected_uid)):
+        raise PermissionError("Sign in with the correct store account")
+    token = str(bridge.getIdToken() or "")
+    if not token:
+        raise PermissionError("Firebase sign-in has expired")
+    return uid, token
+
+
+def _path(*segments):
+    values = [str(segment) for segment in segments]
+    if not all(re.fullmatch(r"[A-Za-z0-9_-]+", value) for value in values):
+        raise ValueError("Invalid database path")
+    return "/".join(values)
+
+
+def _request(method, path, payload=None, authenticated=False):
+    url = DATABASE_URL + "/" + path + ".json"
+    if authenticated:
+        _, token = _identity()
+        url += "?auth=" + quote(token, safe="")
+    body = None if method in ("GET", "DELETE") else json.dumps(payload).encode("utf-8")
+    request = Request(url, data=body, headers={"Content-Type": "application/json"}, method=method)
+    with urlopen(request, timeout=20) as response:
+        raw = response.read()
+    return json.loads(raw.decode("utf-8")) if raw else None
+
 
 def EncryptData(Type, Value):
-    if Type == "Password":
-        key = key_1
-    else:
-        key = key_2
-    crypter = Fernet(key)
-    EncryptedContent = crypter.encrypt(str(Value).encode("ascii"))
-    return str(EncryptedContent, "utf-8")
+    raise RuntimeError("Legacy password encryption is disabled; use Firebase Authentication")
+
 
 def DecryptData(Type, Value):
-    if Type == "Password":
-        key = key_1
-    else:
-        key = key_2
-    crypter2 = Fernet(key.encode("ascii"))
-    DecryptedContent = crypter2.decrypt(Value.encode("ascii"))
-    return str(DecryptedContent, "utf-8")
+    raise RuntimeError("Legacy password decryption is disabled; use Firebase Authentication")
 
 def PromotionValidation(start, end):
     if start == "Tap to set" and end == "Tap to set":
@@ -59,26 +139,9 @@ def PromotionValidation(start, end):
             return False
 
 def UpdateLog(ID, Action, StoreName, Location, Email):
-    now = datetime.now()
-    Day = str(now.today().day)
-    Month = str(now.today().month)
-    Year = str(now.today().year)
-    current_date = Day + "/" + Month + "/" + Year
-    current_time = now.strftime("%H:%M:%S")
-
-    try:
-        db.reference('/Log').push({
-            'A) ID': ID,
-            'B) Action': Action,
-            'C) Date': current_date,
-            'E) Time': current_time,
-            'F) Store Name': StoreName,
-            'G) Location': Location,
-            'H) Email': Email
-        })
-    except Exception:
-        # A log failure must not reverse a completed account operation.
-        pass
+    # The old global log exposed account email addresses. No remote log is
+    # created in the new database.
+    pass
 
 ########################### Callable Function ##################################
 
@@ -143,16 +206,12 @@ def ResetTable():
 
 def DownloadStoreDetail():
     AllData = []
-    for Data in (db.reference("/Account").get() or {}).values():
-        if Data is None:
+    for uid, data in (_request("GET", _path("stores")) or {}).items():
+        if not isinstance(data, dict):
             continue
-        SetData = [
-            Data.get('A) ID'),
-            Data.get('B) Store Name'),
-            Data.get('C) Location'),
-        ]
-        if SetData[1] is not None:
-            AllData.append(SetData)
+        name, location = data.get("name"), data.get("location")
+        if name is not None and location is not None:
+            AllData.append([uid, name, location])
     return AllData
         
 
@@ -167,8 +226,8 @@ def SaveStoreDetail(ID, Name, Location):
 
 def DownloadItemList(ID):
     AllData = []
-    for i, Data in (db.reference("/" + str(ID)).get() or {}).items():
-        if Data is None:
+    for i, Data in (_request("GET", _path("items", ID)) or {}).items():
+        if not isinstance(Data, dict):
             continue
         SetData = [
             i,
@@ -333,110 +392,83 @@ def RemoveHistory(HistoryID):
 
 ###################### STORE ###################### STORE ###################### STORE ###################### STORE ###################### STORE ###################### STORE ######################
 def CheckKey(key):
-    ID = []
-    KeyList = []
-
-    returnOutput = []
-    ref = db.reference("/Registration_Key")
-    for i in ref.get() or {}:
-        Data = ref.child(i).get()
-        ID.append(i)
-        KeyList.append(Data.get('Key'))
-
-    if key in KeyList:
-        for i, j in enumerate(KeyList):
-            if j == key:
-                returnOutput = [j, ID[i]]
-                break
-    else:
-        returnOutput = ["invalid", ""]
-
-    return returnOutput
+    # Legacy registration keys cannot safely be validated inside an APK.
+    return ["invalid", ""]
 
 def RemoveKey(ID):
-    ref = db.reference("/Registration_Key")
-    ref.child(ID).delete()
+    # Approval is now performed in Firebase Console.
+    return None
     
 def CheckRegisteredEmail(email):
-    ref = db.reference("/Account")
-    EmailData = []
-    for i in ref.get() or {}:
-        Data = ref.child(i).get()
-        EmailData.append(Data.get('D) Email'))
-            
-    if email in EmailData:
-        return True
-    else:
-        return False
+    raise RuntimeError("Use Firebase Authentication to check email availability")
 
 def CheckUniqueID(ID):
-    ref = db.reference("/Account")
-    UniqueIDList = []
-    for i in ref.get() or {}:
-        Data = ref.child(i).get()
-        UniqueIDList.append(Data.get('A) ID'))
-            
-    if ID in UniqueIDList:
-        return True
-    else:
-        return False
+    return _request("GET", _path("stores", ID)) is not None
+
+
+def CheckMerchantApproval(uid):
+    _identity(uid)
+    return _request("GET", _path("merchantApprovals", uid), authenticated=True) is True
 
 def RegisterNewAccount(UniqueID, StoreName, Location, Email, Password):
-    ref = db.reference('/Account')
-    ref.push({
-        'A) ID': UniqueID,
-        'B) Store Name': StoreName,
-        'C) Location': Location,
-        'D) Email': Email,
-        'E) Password': EncryptData("Password", Password)
-                })
-
-    table = "/" + str(UniqueID)
-    try:
-        db.reference(table).push({'Default': 'Default'})
-        UpdateLog(UniqueID, "Register Account", StoreName, Location, Email)
-    except Exception:
-        # The account write above succeeded; a missing placeholder or log
-        # must not make registration appear to have failed.
-        pass
+    uid, _ = _identity(UniqueID)
+    _request("PUT", _path("approvalRequests", uid), {
+        "storeName": StoreName,
+        "location": Location,
+        "email": Email,
+    }, authenticated=True)
 
 def Login(Email, Password):
     try:
-        Accounts = db.reference("/Account").get() or {}
+        uid, _ = _identity()
+        if str(_bridge().getEmail()).casefold() != str(Email).casefold():
+            return 1
+        return 0 if CheckMerchantApproval(uid) else 1
+    except PermissionError:
+        return 1
     except Exception:
         return 3
 
-    # 0 = Login Success, 1 = Wrong Email, 2 = Wrong Password, 3 = Connection Error
-    for Data in Accounts.values():
-        if Data is not None and Data.get('D) Email') == Email:
-            return 0 if Password == DecryptData("Password", Data.get('E) Password')) else 2
-    return 1
-
 def GetLoginInformation(Email):
-    ref = db.reference("/Account")
-    UniqueIDData = []
-    IDData = []
-    StoreNameData = []
-    LocationData = []
-    EmailData = []
-    PasswordData = []
-    for i in ref.get() or {}:
-        Data = ref.child(i).get()
-        UniqueIDData.append(i)
-        IDData.append(Data.get('A) ID'))
-        StoreNameData.append(Data.get('B) Store Name'))
-        LocationData.append(Data.get('C) Location'))
-        EmailData.append(Data.get('D) Email'))
-        PasswordData.append(Data.get('E) Password'))
-
-    i = 0
-    for j in EmailData:
-        if j == Email:
-            return [UniqueIDData[i], IDData[i], StoreNameData[i], LocationData[i], Email, PasswordData[i]]
-            break
-        i += 1
+    uid, _ = _identity()
+    if not CheckMerchantApproval(uid):
+        raise PermissionError("Store account is waiting for approval")
+    current_email = str(_bridge().getEmail())
+    if current_email.casefold() != str(Email).casefold():
+        raise PermissionError("Store email does not match the signed-in account")
+    profile = _request("GET", _path("merchantProfiles", uid), authenticated=True)
+    from_request = not profile
+    if from_request:
+        profile = _request("GET", _path("approvalRequests", uid), authenticated=True) or {}
+    name = profile.get("storeName" if from_request else "name")
+    location = profile.get("location")
+    if not name or not location:
+        raise ValueError("Store profile is incomplete")
+    if from_request:
+        _request("PUT", _path("merchantProfiles", uid), {
+            "name": name,
+            "location": location,
+            "email": current_email,
+        }, authenticated=True)
+    elif profile.get("email") != current_email:
+        _request("PATCH", _path("merchantProfiles", uid), {
+            "email": current_email,
+        }, authenticated=True)
+    _request("PUT", _path("stores", uid), {
+        "name": name,
+        "location": location,
+    }, authenticated=True)
+    if from_request:
+        _request("DELETE", _path("approvalRequests", uid), authenticated=True)
+    return [uid, uid, name, location, current_email, ""]
 
 def SaveLoginInformation(UniqueID, ID, StoreName, Location, Email, Password):
+    uid = str(_bridge().getUid() or "")
+    if uid != str(UniqueID) or uid != str(ID):
+        raise PermissionError("Store account does not match the signed-in user")
+    if str(_bridge().getEmail()).casefold() != str(Email).casefold():
+        raise PermissionError("Store email does not match the signed-in user")
+    cursor.execute("DELETE FROM Login")
     cursor.execute("INSERT INTO Login VALUES(:UniqueID, :ID, :StoreName, :Location, :Email, :Password)",
         {
             'UniqueID': UniqueID,
@@ -444,7 +476,7 @@ def SaveLoginInformation(UniqueID, ID, StoreName, Location, Email, Password):
             'StoreName': StoreName,
             'Location': Location,
             'Email': Email,
-            'Password': Password
+            'Password': ""
         })
     connection.commit()
 
@@ -480,9 +512,8 @@ def GetLoggedIn_Email():
     return records[0][4]
 
 def GetLoggedIn_Password():
-    cursor.execute("SELECT *, oid FROM Login")
-    records = cursor.fetchall()
-    return records[0][5]
+    # Passwords are managed by Firebase Authentication, never by SQLite.
+    return ""
 
 def ResetLoginTable():
     print("Clear Table")
@@ -561,8 +592,7 @@ def GetStoreItemList3():
     return [All_Limit, Member_Limit]
 
 def RegisterItem(StoreID, Barcode, Name, Price, All_Dis, All_Limit, Mem_Dis, Mem_Limit, Start, End, Image):
-    Table = "/" + str(StoreID)
-    ref = db.reference(Table)
+    _identity(StoreID)
     
     now = datetime.now()
     Day = str(now.today().day)
@@ -571,7 +601,7 @@ def RegisterItem(StoreID, Barcode, Name, Price, All_Dis, All_Limit, Mem_Dis, Mem
     
     LastUpdate = Day + "/" + Month + "/" + Year
     
-    ref.push({'A) Barcode': Barcode,
+    response = _request("POST", _path("items", StoreID), {'A) Barcode': Barcode,
               'B) Name': Name,
               'C) Price': Price,
               'D) All Discount': All_Dis,
@@ -582,13 +612,8 @@ def RegisterItem(StoreID, Barcode, Name, Price, All_Dis, All_Limit, Mem_Dis, Mem
               'I) End Day': End,
               'J) Image': Image,
               'K) Last Update': LastUpdate
-             })
-
-    UniqueID = []
-    for i in ref.get():
-        UniqueID.append(i)
-
-    return UniqueID[-1]
+             }, authenticated=True)
+    return response["name"]
         
 def AddNewItem(UniqueID, Barcode, Name, Price, All_Discount, All_Limit, Member_Discount, Member_Limit, Start, End, Image):
     now = datetime.now()
@@ -615,27 +640,20 @@ def AddNewItem(UniqueID, Barcode, Name, Price, All_Discount, All_Limit, Member_D
     connection.commit()
 
 def CheckRegisteredBarcode(ID, Barcode):
-    ref = db.reference("/" + str(ID))
-    BarcodeData = []
-    for i in ref.get() or {}:
-        Data = ref.child(i).get()
-        BarcodeData.append(Data.get('A) Barcode'))
-        
-    if Barcode in BarcodeData:
-        return True
-    else:
-        return False
+    _identity(ID)
+    items = _request("GET", _path("items", ID)) or {}
+    return any(isinstance(data, dict) and data.get('A) Barcode') == Barcode
+               for data in items.values())
 
 def UpdateItemInformation(StoreID, ID, Barcode, Name, Price, All_Dis, All_Limit, Mem_Dis, Mem_Limit, Start, End, Image):
+    _identity(StoreID)
     now = datetime.now()
     Day = str(now.today().day)
     Month = str(now.today().month)
     Year = str(now.today().year)
     LastUpdate = Day + "/" + Month + "/" + Year
     
-    table = "/" + str(StoreID)
-    ref = db.reference(table)
-    ref.child(ID).update({
+    _request("PATCH", _path("items", StoreID, ID), {
         'A) Barcode': Barcode,
         'B) Name': Name,
         'C) Price': Price,
@@ -647,7 +665,7 @@ def UpdateItemInformation(StoreID, ID, Barcode, Name, Price, All_Dis, All_Limit,
         'I) End Day': End,
         'J) Image': Image,
         'K) Last Update': LastUpdate
-    })
+    }, authenticated=True)
 
 def UpdateItem(UniqueID, Barcode, Name, Price, All_Discount, All_Limit, Member_Discount, Member_Limit, Start, End, Image):
     now = datetime.now()
@@ -688,43 +706,35 @@ def UpdateItem(UniqueID, Barcode, Name, Price, All_Discount, All_Limit, Member_D
     connection.commit()
 
 def RemoveItem(StoreID, ID):
-    table = "/" + str(StoreID)
-    ref = db.reference(table)
-    ref.child(ID).delete()
+    _identity(StoreID)
+    _request("DELETE", _path("items", StoreID, ID), authenticated=True)
 
 def RemoveItem2(ID):
     cursor.execute("DELETE FROM StoreItem WHERE UniqueID = ?", (ID,))
     connection.commit()
 
 def GetUniqueID(StoreID, Barcode):
-    ref = db.reference("/" + str(StoreID))
-    UniqueID = ""
-    IDData = []
-    BarcodeData = []
-    for i in ref.get() or {}:
-        Data = ref.child(i).get()
-        IDData.append(i)
-        BarcodeData.append(Data.get('A) Barcode'))
-
-    i = 0
-    for b in BarcodeData:
-        if b == Barcode:
-            UniqueID = IDData[i]
-            break
-        i += 1
-
-    return UniqueID
+    _identity(StoreID)
+    for item_id, data in (_request("GET", _path("items", StoreID)) or {}).items():
+        if isinstance(data, dict) and data.get('A) Barcode') == Barcode:
+            return item_id
+    return ""
 
 def UpdateAccountInformation(UniqueID, ID, StoreName, Location, Email, Password):
-    ref = db.reference("/Account")
-    ref.child(UniqueID).update({
-        'A) ID': ID,
-        'B) Store Name': StoreName,
-        'C) Location': Location,
-        'D) Email': Email,
-        'E) Password': EncryptData("Password", Password)
-    })
-    UpdateLog(ID, "Update Account Information", StoreName, Location, Email)
+    uid, _ = _identity(UniqueID)
+    if uid != str(ID):
+        raise PermissionError("Store ID does not match the signed-in user")
+    if not CheckMerchantApproval(uid):
+        raise PermissionError("Store account is waiting for approval")
+    _request("PUT", _path("stores", uid), {
+        "name": StoreName,
+        "location": Location,
+    }, authenticated=True)
+    _request("PATCH", _path("merchantProfiles", uid), {
+        "name": StoreName,
+        "location": Location,
+        "email": Email,
+    }, authenticated=True)
 
 def UpdateAccountInformation2(UniqueID, ID, StoreName, Location, Email, Password):
     cursor.execute("""UPDATE Login SET
@@ -741,45 +751,22 @@ def UpdateAccountInformation2(UniqueID, ID, StoreName, Location, Email, Password
                     'StoreName': StoreName,
                     'Location': Location,
                     'Email': Email,
-                    'Password': Password
+                    'Password': ""
                     })
     connection.commit()
 
 def DeleteAccount(UniqueID, ID):
-    account_key = str(UniqueID)
-    store_id = str(ID)
-    if not account_key or not store_id or "/" in account_key or "/" in store_id:
-        raise ValueError("Invalid account identifier")
-    db.reference().update({
-        "Account/" + account_key: None,
-        store_id: None,
-    })
-    UpdateLog(ID, "Delete Account", "None", "None", "None")
+    uid, _ = _identity(UniqueID)
+    if uid != str(ID):
+        raise PermissionError("Store ID does not match the signed-in user")
+    _request("DELETE", _path("items", uid), authenticated=True)
+    _request("DELETE", _path("stores", uid), authenticated=True)
+    _request("DELETE", _path("merchantProfiles", uid), authenticated=True)
+    _request("DELETE", _path("approvalRequests", uid), authenticated=True)
 
 # Require manual add registration key
 def AddRedeemCode():
-    Characters = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]
-
-    RedeemCode = []
-    for k in range(0, 32):
-        while True:
-            Redeem = ""
-            for i in range(0, 4):
-                for j in range(0, 4):
-                    random.shuffle(Characters)
-                    Redeem += Characters[0]
-                if i != 3:
-                    Redeem += "-"
-            if Redeem not in RedeemCode:
-                break
-        RedeemCode.append(Redeem)
-
-    for i in RedeemCode:
-        print(i)
-        ref = db.reference('/Registration_Key')
-        ref.push({
-            'Key': i
-                })
+    raise RuntimeError("Registration keys are no longer used; approve stores in Firebase Console")
             
             
         

@@ -18,6 +18,7 @@ import android.widget.TextView;
 import com.chaquo.python.PyObject;
 import com.chaquo.python.Python;
 import com.chaquo.python.android.AndroidPlatform;
+import com.google.firebase.auth.FirebaseAuth;
 
 public class UpdateStoreInformation extends AppCompatActivity{
     EditText et_storename, et_location;
@@ -30,6 +31,11 @@ public class UpdateStoreInformation extends AppCompatActivity{
         super.onCreate(savedInstanceState);
         AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_NO);
         setContentView(R.layout.activity_update_store_information);
+        if (FirebaseAuth.getInstance().getCurrentUser() == null) {
+            startActivity(new Intent(this, Login.class));
+            finish();
+            return;
+        }
         LoadingDialog loadingDialog = new LoadingDialog(UpdateStoreInformation.this);
         MessageDialog messageDialog = new MessageDialog(UpdateStoreInformation.this);
         Vibrator v = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
@@ -39,6 +45,12 @@ public class UpdateStoreInformation extends AppCompatActivity{
         Python py = Python.getInstance();
         final PyObject Database_py = py.getModule("Database");
         final PyObject Tools_py = py.getModule("Tools");
+        String uid = FirebaseAuth.getInstance().getCurrentUser().getUid();
+        if (!uid.equals(Database_py.callAttr("GetLoggedIn_ID").toString())) {
+            startActivity(new Intent(this, Login.class));
+            finish();
+            return;
+        }
 
         et_storename = findViewById(R.id.et_storename_storeinfo);
         et_location = findViewById(R.id.et_location_storeinfo);
@@ -63,95 +75,41 @@ public class UpdateStoreInformation extends AppCompatActivity{
             public void onClick(View view) {
                 String Validation = Tools_py.callAttr("StoreNameAndLocationValidation", et_storename.getText().toString(), et_location.getText().toString()).toString();
                 if (Validation.equals("Valid")){
-                    String UniqueID = Database_py.callAttr("GetLoggedIn_UniqueID").toString();
-                    String ID = Database_py.callAttr("GetLoggedIn_ID").toString();
                     String StoreName = et_storename.getText().toString();
                     String Location = et_location.getText().toString();
-                    String Email = Database_py.callAttr("GetLoggedIn_Email").toString();
-                    String Password = Database_py.callAttr("GetLoggedIn_Password").toString();
+                    String Email = FirebaseAuth.getInstance().getCurrentUser().getEmail();
 
                     loadingDialog.Start("Updating...");
                     new Thread() {
                         @Override
                         public void run() {
-                            int LoginResult;
+                            boolean updated = false;
                             try {
-                                LoginResult = Database_py.callAttr("Login", Email, Password).toInt();
-                                if (LoginResult == 0) {
-                                    Database_py.callAttr("UpdateAccountInformation", UniqueID, ID, StoreName, Location, Email, Password);
-                                    Tools_py.callAttr("SendAccountChangedInformation", "StoreInformation", StoreName, Location, "None", Email);
+                                if (!uid.equals(FirebaseBridge.getUid())) {
+                                    throw new IllegalStateException("Store session changed");
                                 }
+                                Database_py.callAttr("UpdateAccountInformation", uid, uid, StoreName, Location, Email, "");
+                                updated = true;
+                            } catch (Exception e) {
+                                updated = false;
                             }
-                            catch (Exception e){
-                                LoginResult = 3;
-                            }
-                            try {
-                                int finalLoginResult = LoginResult;
-                                runOnUiThread(new Runnable() {
-                                    @Override
-                                    public void run() {
-                                        loadingDialog.Dismiss();
-                                        switch (finalLoginResult) {
-                                            case 0:
-                                                // Login Success
-                                                Database_py.callAttr("UpdateAccountInformation2", UniqueID, ID, StoreName, Location, Email, Password);
-
-                                                messageDialog.Show("positive", "Store information updated successfully!");
-                                                Button btn_close = messageDialog.dialog.findViewById(R.id.btn_close_msg);
-                                                btn_close.setOnClickListener(new View.OnClickListener() {
-                                                    @Override
-                                                    public void onClick(View view) {
-                                                        messageDialog.Dismiss();
-                                                        startActivity(new Intent(UpdateStoreInformation.this, Account.class));
-                                                    }
-                                                });
-                                                break;
-
-                                            case 1:
-                                                // Login Error: Email changed/Account deleted
-                                                // Go to Login
-                                                loadingDialog.Dismiss();
-                                                messageDialog.Show("error", "Your account might has been deleted or your email has been changed."); // Display error message
-                                                Button btn_close5 = messageDialog.dialog.findViewById(R.id.btn_close_msg);
-                                                btn_close5.setOnClickListener(new View.OnClickListener() {
-                                                    @Override
-                                                    public void onClick(View view) {
-                                                        messageDialog.Dismiss();
-                                                        startActivity(new Intent(UpdateStoreInformation.this, Login.class));
-                                                    }
-                                                });
-                                                break;
-
-                                            case 2:
-                                                // Login Error: Password changed
-                                                // Go to Login
-                                                loadingDialog.Dismiss();
-                                                messageDialog.Show("error", "Your password has been changed."); // Display error message
-                                                Button btn_close2 = messageDialog.dialog.findViewById(R.id.btn_close_msg);
-                                                btn_close2.setOnClickListener(new View.OnClickListener() {
-                                                    @Override
-                                                    public void onClick(View view) {
-                                                        messageDialog.Dismiss();
-                                                        startActivity(new Intent(UpdateStoreInformation.this, Login.class));
-                                                    }
-                                                });
-                                                break;
-
-                                            default:
-                                                // Login error: No Internet Connection
-                                                loadingDialog.Dismiss();
-                                                messageDialog.Show("error", "No Internet Connection"); // Display error message
-                                                Button btn_close3 = messageDialog.dialog.findViewById(R.id.btn_close_msg);
-                                                btn_close3.setOnClickListener(new View.OnClickListener() {
-                                                    @Override
-                                                    public void onClick(View view) {
-                                                        messageDialog.Dismiss();
-                                                    }
-                                                });
-                                        }
-                                    }
-                                });
-                            } catch (final Exception ex) {}
+                            boolean finalUpdated = updated;
+                            runOnUiThread(() -> {
+                                loadingDialog.Dismiss();
+                                if (finalUpdated) {
+                                    Database_py.callAttr("SaveLoginInformation", uid, uid, StoreName, Location, Email, "");
+                                    messageDialog.Show("positive", "Store information updated successfully!");
+                                    Button close = messageDialog.dialog.findViewById(R.id.btn_close_msg);
+                                    close.setOnClickListener(v1 -> {
+                                        messageDialog.Dismiss();
+                                        startActivity(new Intent(UpdateStoreInformation.this, Account.class));
+                                    });
+                                } else {
+                                    messageDialog.Show("error", "Could not update store information. Check your connection and store approval.");
+                                    Button close = messageDialog.dialog.findViewById(R.id.btn_close_msg);
+                                    close.setOnClickListener(v1 -> messageDialog.Dismiss());
+                                }
+                            });
                         }
                     }.start();
                 }

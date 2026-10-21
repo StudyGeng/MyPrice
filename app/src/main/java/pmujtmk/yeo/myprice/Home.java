@@ -21,6 +21,7 @@ import com.chaquo.python.Python;
 import com.chaquo.python.android.AndroidPlatform;
 import com.journeyapps.barcodescanner.ScanContract;
 import com.journeyapps.barcodescanner.ScanOptions;
+import com.google.firebase.auth.FirebaseAuth;
 
 public class Home extends AppCompatActivity {
 
@@ -100,96 +101,15 @@ public class Home extends AppCompatActivity {
         });
 
         // Button Login
-        btn_login.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                // Check either previous account has been logged out or not
-                if (!Database_py.callAttr("GetLoggedIn_ID").toString().equals("Unavailable")) {
-                    // Has not been logged out
-                    String email = Database_py.callAttr("GetLoggedIn_Email").toString();
-                    String password = Database_py.callAttr("GetLoggedIn_Password").toString();
-
-                    // Display Loading Dialog while system is verifying the previous login information
-                    loadingDialog.Start("Loading...");
-                    new Thread() {
-                        @Override
-                        public void run() {
-                            int LoginResult;
-                            try {
-                                // Verifying previous login information
-                                LoginResult = Database_py.callAttr("Login", email, password).toInt();
-                            }
-                            catch (Exception e){
-                                // No Intenet Connection
-                                LoginResult = 3;
-                            }
-                            try {
-                                int finalLoginResult = LoginResult;
-                                runOnUiThread(new Runnable() {
-                                    @Override
-                                    public void run() {
-                                        loadingDialog.Dismiss(); // Close the loading dialog
-                                        switch (finalLoginResult){
-                                            case 0:
-                                                // Login Success
-                                                // Go to Store Home
-                                                Intent i = new Intent(Home.this, Store_Home.class);
-                                                i.putExtra("refresh", "true");
-                                                startActivity(i);
-                                                break;
-
-                                            case 1:
-                                                // Login Error: Email changed/Account deleted
-                                                // Go to Login
-                                                messageDialog.Show("error", "Your account might has been deleted or your email has been changed."); // Display error message
-                                                Button btn_close = messageDialog.dialog.findViewById(R.id.btn_close_msg);
-                                                btn_close.setOnClickListener(new View.OnClickListener() {
-                                                    @Override
-                                                    public void onClick(View view) {
-                                                        messageDialog.Dismiss();
-                                                        startActivity(new Intent(Home.this, Login.class));
-                                                    }
-                                                });
-                                                break;
-
-                                            case 2:
-                                                // Login Error: Password changed
-                                                // Go to Login
-                                                messageDialog.Show("error", "Your password has been changed."); // Display error message
-                                                Button btn_close2 = messageDialog.dialog.findViewById(R.id.btn_close_msg);
-                                                btn_close2.setOnClickListener(new View.OnClickListener() {
-                                                    @Override
-                                                    public void onClick(View view) {
-                                                        messageDialog.Dismiss();
-                                                        startActivity(new Intent(Home.this, Login.class));
-                                                    }
-                                                });
-                                                break;
-
-                                            default:
-                                                // Login error: No Internet Connection
-                                                messageDialog.Show("error", "No Internet Connection"); // Display error message
-                                                Button btn_close3 = messageDialog.dialog.findViewById(R.id.btn_close_msg);
-                                                btn_close3.setOnClickListener(new View.OnClickListener() {
-                                                    @Override
-                                                    public void onClick(View view) {
-                                                        messageDialog.Dismiss();
-                                                    }
-                                                });
-                                        }
-                                    }
-                                });
-                            } catch (final Exception ex) {
-
-                            }
-                        }
-                    }.start();
-                }
-                else {
-                    // Already logged out
-                    // Go to Login
-                    startActivity(new Intent(Home.this, Login.class));
-                }
+        btn_login.setOnClickListener(view -> {
+            String cachedStoreId = Database_py.callAttr("GetLoggedIn_ID").toString();
+            if (FirebaseAuth.getInstance().getCurrentUser() == null
+                    || !FirebaseAuth.getInstance().getCurrentUser().getUid().equals(cachedStoreId)) {
+                startActivity(new Intent(Home.this, Login.class));
+            } else {
+                Intent intent1 = new Intent(Home.this, Store_Home.class);
+                intent1.putExtra("refresh", "true");
+                startActivity(intent1);
             }
         });
 

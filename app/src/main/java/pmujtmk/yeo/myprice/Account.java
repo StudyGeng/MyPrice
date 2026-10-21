@@ -2,18 +2,26 @@ package pmujtmk.yeo.myprice;
 
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.app.AppCompatDelegate;
+import androidx.appcompat.app.AlertDialog;
 
 import android.annotation.SuppressLint;
 import android.app.Dialog;
 import android.content.Intent;
+import android.graphics.Bitmap;
+import android.graphics.Color;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.Button;
+import android.widget.ImageView;
 import android.widget.TextView;
 
 import com.chaquo.python.PyObject;
 import com.chaquo.python.Python;
 import com.chaquo.python.android.AndroidPlatform;
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.zxing.BarcodeFormat;
+import com.google.zxing.MultiFormatWriter;
+import com.google.zxing.common.BitMatrix;
 
 public class Account extends AppCompatActivity{
     TextView tv_storename, tv_location;
@@ -24,6 +32,11 @@ public class Account extends AppCompatActivity{
         super.onCreate(savedInstanceState);
         AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_NO);
         setContentView(R.layout.activity_account);
+        if (FirebaseAuth.getInstance().getCurrentUser() == null) {
+            startActivity(new Intent(this, Login.class));
+            finish();
+            return;
+        }
 
         LoadingDialog loadingDialog = new LoadingDialog(Account.this);
         MessageDialog messageDialog = new MessageDialog(Account.this);
@@ -32,7 +45,12 @@ public class Account extends AppCompatActivity{
             Python.start(new AndroidPlatform(this));
         Python py = Python.getInstance();
         final PyObject Database_py = py.getModule("Database");
-        final PyObject Tools_py = py.getModule("Tools");
+        String uid = FirebaseAuth.getInstance().getCurrentUser().getUid();
+        if (!uid.equals(Database_py.callAttr("GetLoggedIn_ID").toString())) {
+            startActivity(new Intent(this, Login.class));
+            finish();
+            return;
+        }
 
         tv_storename = findViewById(R.id.tv_storename_myaccount);
         tv_location = findViewById(R.id.tv_location_myaccount);
@@ -70,90 +88,46 @@ public class Account extends AppCompatActivity{
         btn_GenerateQRCode.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                String UniqueID = Database_py.callAttr("GetLoggedIn_ID").toString();
-                String StoreName = Database_py.callAttr("GetLoggedIn_StoreName").toString();
-                String Location = Database_py.callAttr("GetLoggedIn_Location").toString();
-                String Email = Database_py.callAttr("GetLoggedIn_Email").toString();
-                String Password = Database_py.callAttr("GetLoggedIn_Password").toString();
-
-                loadingDialog.Start("Generating Unique QR Code");
-                new Thread() {
-                    @Override
-                    public void run() {
-                        int LoginResult;
-                        try {
-                            LoginResult = Database_py.callAttr("Login", Email, Password).toInt();
-                            if (LoginResult == 0) {
-                                Tools_py.callAttr("Send_QRcode_To_User", UniqueID, StoreName, Location, Email, "", "generate");
+                loadingDialog.Start("Generating Store QR Code...");
+                new Thread(() -> {
+                    Bitmap qr = null;
+                    try {
+                        if (!uid.equals(FirebaseBridge.getUid()) ||
+                                !Database_py.callAttr("CheckMerchantApproval", uid).toBoolean()) {
+                            throw new IllegalStateException("Store is not approved");
+                        }
+                        BitMatrix bits = new MultiFormatWriter().encode(uid, BarcodeFormat.QR_CODE, 720, 720);
+                        qr = Bitmap.createBitmap(720, 720, Bitmap.Config.RGB_565);
+                        for (int x = 0; x < 720; x++) {
+                            for (int y = 0; y < 720; y++) {
+                                qr.setPixel(x, y, bits.get(x, y) ? Color.BLACK : Color.WHITE);
                             }
                         }
-                        catch (Exception e){
-                            LoginResult = 3;
-                        }
-                        try {
-                            int finalLoginResult = LoginResult;
-                            runOnUiThread(new Runnable() {
-                                @Override
-                                public void run() {
-                                    loadingDialog.Dismiss();
-                                    switch (finalLoginResult) {
-                                        case 0:
-                                            // Login Success
-                                            messageDialog.Show("positive", "Unique QR code generated!\nPlease check your email.");
-                                            Button btn_close = messageDialog.dialog.findViewById(R.id.btn_close_msg);
-                                            btn_close.setOnClickListener(new View.OnClickListener() {
-                                                @Override
-                                                public void onClick(View view) {
-                                                    messageDialog.Dismiss();
-                                                }
-                                            });
-                                            break;
-
-                                        case 1:
-                                            // Login Error: Email changed/Account deleted
-                                            // Go to Login
-                                            messageDialog.Show("error", "Your account might has been deleted or your email has been changed."); // Display error message
-                                            Button btn_close5 = messageDialog.dialog.findViewById(R.id.btn_close_msg);
-                                            btn_close5.setOnClickListener(new View.OnClickListener() {
-                                                @Override
-                                                public void onClick(View view) {
-                                                    messageDialog.Dismiss();
-                                                    startActivity(new Intent(Account.this, Login.class));
-                                                }
-                                            });
-                                            break;
-
-                                        case 2:
-                                            // Login Error: Password changed
-                                            // Go to Login
-                                            messageDialog.Show("error", "Your password has been changed."); // Display error message
-                                            Button btn_close2 = messageDialog.dialog.findViewById(R.id.btn_close_msg);
-                                            btn_close2.setOnClickListener(new View.OnClickListener() {
-                                                @Override
-                                                public void onClick(View view) {
-                                                    messageDialog.Dismiss();
-                                                    startActivity(new Intent(Account.this, Login.class));
-                                                }
-                                            });
-                                            break;
-
-                                        default:
-                                            // Login error: No Internet Connection
-                                            messageDialog.Show("error", "No Internet Connection"); // Display error message
-                                            Button btn_close3 = messageDialog.dialog.findViewById(R.id.btn_close_msg);
-                                            btn_close3.setOnClickListener(new View.OnClickListener() {
-                                                @Override
-                                                public void onClick(View view) {
-                                                    messageDialog.Dismiss();
-                                                }
-                                            });
-                                    }
-                                }
-                            });
-                        } catch (final Exception ex) {}
+                    } catch (Exception ignored) {
+                        qr = null;
                     }
-                }.start();
-
+                    Bitmap finalQr = qr;
+                    runOnUiThread(() -> {
+                        loadingDialog.Dismiss();
+                        if (finalQr == null) {
+                            messageDialog.Show("error", "Could not generate QR code. Check your connection and store approval.");
+                            Button close = messageDialog.dialog.findViewById(R.id.btn_close_msg);
+                            close.setOnClickListener(v -> messageDialog.Dismiss());
+                            return;
+                        }
+                        ImageView image = new ImageView(Account.this);
+                        image.setImageBitmap(finalQr);
+                        image.setAdjustViewBounds(true);
+                        int padding = (int) (16 * getResources().getDisplayMetrics().density);
+                        image.setPadding(padding, padding, padding, padding);
+                        new AlertDialog.Builder(Account.this)
+                                .setTitle("Store QR Code")
+                                .setMessage("Shoppers can scan this code. You can take a screenshot to print it.")
+                                .setView(image)
+                                .setPositiveButton("Close", null)
+                                .show();
+                    });
+                }).start();
             }
         });
 
@@ -171,92 +145,16 @@ public class Account extends AppCompatActivity{
                 btn_yes = dialog.findViewById(R.id.btn_yes_qd);
                 btn_no = dialog.findViewById(R.id.btn_no_qd);
 
-                tv_message.setText("Do you sure to delete this account?");
+                tv_message.setText("See how to delete this store account in Firebase Console?");
                 btn_yes.setOnClickListener(new View.OnClickListener() {
                     @Override
                     public void onClick(View view) {
                         dialog.dismiss();
-                        String email = Database_py.callAttr("GetLoggedIn_Email").toString();
-                        String password = Database_py.callAttr("GetLoggedIn_Password").toString();
-                        loadingDialog.Start("Loading...");
-                        new Thread(){
-                            @Override
-                            public void run() {
-                                String[][] Data = null;
-                                int LoginResult;
-                                String StoreName = null;
-                                String Location = null;
-                                try {
-                                    LoginResult = Database_py.callAttr("Login", email, password).toInt();
-                                }
-                                catch (Exception e){
-                                    LoginResult = 3;
-                                }
-                                try {
-                                    int finalLoginResult = LoginResult;
-                                    runOnUiThread(new Runnable() {
-                                        @Override
-                                        public void run() {
-                                            loadingDialog.Dismiss();
-                                            switch (finalLoginResult) {
-                                                case 0:
-                                                    // Login Success
-                                                    String UniqueID = Database_py.callAttr("GetLoggedIn_UniqueID").toString();
-                                                    String ID = Database_py.callAttr("GetLoggedIn_ID").toString();
-                                                    String Email = Database_py.callAttr("GetLoggedIn_Email").toString();
-
-                                                    Intent i = new Intent(Account.this, OTPverification.class);
-                                                    i.putExtra("email", Email);
-                                                    i.putExtra("type", "deleteAccount");
-                                                    i.putExtra("uniqueid", UniqueID);
-                                                    i.putExtra("id", ID);
-                                                    startActivity(i);
-                                                    break;
-
-                                                case 1:
-                                                    // Login Error: Email changed/Account deleted
-                                                    // Go to Login
-                                                    messageDialog.Show("error", "Your account might has been deleted or your email has been changed."); // Display error message
-                                                    Button btn_close = messageDialog.dialog.findViewById(R.id.btn_close_msg);
-                                                    btn_close.setOnClickListener(new View.OnClickListener() {
-                                                        @Override
-                                                        public void onClick(View view) {
-                                                            messageDialog.Dismiss();
-                                                            startActivity(new Intent(Account.this, Login.class));
-                                                        }
-                                                    });
-                                                    break;
-
-                                                case 2:
-                                                    // Login Error: Password changed
-                                                    // Go to Login
-                                                    messageDialog.Show("error", "Your password has been changed."); // Display error message
-                                                    Button btn_close2 = messageDialog.dialog.findViewById(R.id.btn_close_msg);
-                                                    btn_close2.setOnClickListener(new View.OnClickListener() {
-                                                        @Override
-                                                        public void onClick(View view) {
-                                                            messageDialog.Dismiss();
-                                                            startActivity(new Intent(Account.this, Login.class));
-                                                        }
-                                                    });
-                                                    break;
-
-                                                default:
-                                                    // Login error: No Internet Connection
-                                                    messageDialog.Show("error", "No Internet Connection"); // Display error message
-                                                    Button btn_close3 = messageDialog.dialog.findViewById(R.id.btn_close_msg);
-                                                    btn_close3.setOnClickListener(new View.OnClickListener() {
-                                                        @Override
-                                                        public void onClick(View view) {
-                                                            messageDialog.Dismiss();
-                                                        }
-                                                    });
-                                            }
-                                        }
-                                    });
-                                } catch (final Exception ex) {}
-                            }
-                        }.start();
+                        new AlertDialog.Builder(Account.this)
+                                .setTitle("Delete store account")
+                                .setMessage("In Realtime Database, remove this store's entries under items, stores, merchantProfiles, approvalRequests, and merchantApprovals. Then delete the user in Authentication > Users. Store ID: " + uid)
+                                .setPositiveButton("OK", null)
+                                .show();
                     }
                 });
 

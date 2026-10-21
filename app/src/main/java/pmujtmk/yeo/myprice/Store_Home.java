@@ -20,6 +20,7 @@ import android.widget.Toast;
 import com.chaquo.python.PyObject;
 import com.chaquo.python.Python;
 import com.chaquo.python.android.AndroidPlatform;
+import com.google.firebase.auth.FirebaseAuth;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -44,13 +45,18 @@ public class Store_Home extends AppCompatActivity {
         AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_NO);
         binding = ActivityStoreHomeBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
+        if (FirebaseAuth.getInstance().getCurrentUser() == null) {
+            startActivity(new Intent(this, Login.class));
+            finish();
+            return;
+        }
 
         if (!Python.isStarted())
             Python.start(new AndroidPlatform(this));
         Python py = Python.getInstance();
         final PyObject Database_py = py.getModule("Database");
 
-        LoggedInStoreID = Database_py.callAttr("GetLoggedIn_ID").toString();
+        LoggedInStoreID = FirebaseAuth.getInstance().getCurrentUser().getUid();
 
         tv_storename = findViewById(R.id.tv_storename_storeitem);
         tv_emptymessage = findViewById(R.id.tv_empty_storeitem);
@@ -74,31 +80,8 @@ public class Store_Home extends AppCompatActivity {
             }
         });
 
-        Intent intent = this.getIntent();
-
-        if (intent.getStringExtra("refresh").equals("true")){
-            Refresh();
-        }
-        else{
-            String Data[][] = Database_py.callAttr("GetStoreItemList").toJava(String[][].class);
-            Double Data2[][] = Database_py.callAttr("GetStoreItemList2").toJava(Double[][].class);
-            Integer Data3[][] = Database_py.callAttr("GetStoreItemList3").toJava(Integer[][].class);
-
-            String ItemUniqueID[] = Data[0];
-            String ItemBarcode[] = Data[1];
-            String ItemName[] = Data[2];
-            Double ItemPrice[] = Data2[0];
-            Double ItemAllDiscount[] = Data2[1];
-            Integer ItemAllLimit[] = Data3[0];
-            Double ItemMemberDiscount[] = Data2[2];
-            Integer ItemMemberLimit[] = Data3[1];
-            String ItemStartDay[] = Data[3];
-            String ItemEndDay[] = Data[4];
-            String ItemImage[] = Data[5];
-            String ItemLastUpdate[] = Data[6];
-            DisplayItemList(ItemUniqueID, ItemBarcode, ItemName, ItemPrice, ItemAllDiscount, ItemAllLimit, ItemMemberDiscount, ItemMemberLimit,
-                    ItemStartDay, ItemEndDay, ItemImage, ItemLastUpdate);
-        }
+        // Always confirm approval and fetch this account's current data on entry.
+        Refresh();
 
         btn_account.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -115,7 +98,10 @@ public class Store_Home extends AppCompatActivity {
 
                             case R.id.log_out:
                                 Database_py.callAttr("ResetLoginTable");
+                                Database_py.callAttr("ResetStoreItemTable");
+                                FirebaseAuth.getInstance().signOut();
                                 startActivity(new Intent(Store_Home.this, Login.class));
+                                finish();
                                 return true;
 
                             default:
@@ -287,48 +273,54 @@ public class Store_Home extends AppCompatActivity {
 
         searchView.setIconified(true);
 
-        String UniqueID = Database_py.callAttr("GetLoggedIn_UniqueID").toString();
-        String ID = Database_py.callAttr("GetLoggedIn_ID").toString();
-        String email = Database_py.callAttr("GetLoggedIn_Email").toString();
-        String password = Database_py.callAttr("GetLoggedIn_Password").toString();
+        if (FirebaseAuth.getInstance().getCurrentUser() == null) {
+            startActivity(new Intent(this, Login.class));
+            finish();
+            return;
+        }
+        String email = FirebaseAuth.getInstance().getCurrentUser().getEmail();
 
         loadingDialog.Start("Updating...");
         new Thread(){
             @Override
             public void run() {
                 String[][] Data = null;
-                int LoginResult;
+                int result = 3;
                 String StoreName = null;
                 String Location = null;
                 try {
-                    LoginResult = Database_py.callAttr("Login", email, password).toInt();
-                    if (LoginResult == 0) {
-                        StoreName = Database_py.callAttr("GetLoginInformation", email).toJava(String[].class)[2];
-                        Location = Database_py.callAttr("GetLoginInformation", email).toJava(String[].class)[3];
+                    if (!LoggedInStoreID.equals(FirebaseBridge.getUid())) {
+                        result = 2;
+                    } else if (!Database_py.callAttr("CheckMerchantApproval", LoggedInStoreID).toBoolean()) {
+                        result = 1;
+                    } else {
+                        String[] details = Database_py.callAttr("GetLoginInformation", email).toJava(String[].class);
+                        StoreName = details[2];
+                        Location = details[3];
                         Data = Database_py.callAttr("DownloadItemList", LoggedInStoreID).toJava(String[][].class);
+                        result = 0;
                     }
+                } catch (Exception e) {
+                    result = 3;
                 }
-                catch (Exception e){
-                    LoginResult = 3;
-                }
-                try {
-                    String[][] finalData = Data;
-                    int finalLoginResult = LoginResult;
-                    String finalStoreName = StoreName;
-                    String finalLocation = Location;
-                    runOnUiThread(new Runnable() {
-                        @Override
-                        public void run() {
-                            switch (finalLoginResult) {
-                                case 0:
-                                    // Login Success
+                String[][] finalData = Data;
+                int finalResult = result;
+                String finalStoreName = StoreName;
+                String finalLocation = Location;
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        loadingDialog.Dismiss();
+                        switch (finalResult) {
+                            case 0:
+                                try {
                                     Database_py.callAttr("ResetStoreItemTable");
                                     for (int i = 0; i < finalData.length; i++) {
                                         Database_py.callAttr("SaveStoreItemList", finalData[i][0], finalData[i][1], finalData[i][2], finalData[i][3],
                                                 finalData[i][4], finalData[i][5], finalData[i][6], finalData[i][7], finalData[i][8], finalData[i][9],
                                                 finalData[i][10], finalData[i][11]);
                                     }
-                                    Database_py.callAttr("UpdateAccountInformation2", UniqueID, ID, finalStoreName, finalLocation, email, password);
+                                    Database_py.callAttr("SaveLoginInformation", LoggedInStoreID, LoggedInStoreID, finalStoreName, finalLocation, email, "");
                                     String Data[][] = Database_py.callAttr("GetStoreItemList").toJava(String[][].class);
                                     Double Data2[][] = Database_py.callAttr("GetStoreItemList2").toJava(Double[][].class);
                                     Integer Data3[][] = Database_py.callAttr("GetStoreItemList3").toJava(Integer[][].class);
@@ -346,57 +338,34 @@ public class Store_Home extends AppCompatActivity {
                                     String ItemImage[] = Data[5];
                                     String ItemLastUpdate[] = Data[6];
 
-                                    loadingDialog.Dismiss();
-
                                     DisplayItemList(ItemUniqueID, ItemBarcode, ItemName, ItemPrice, ItemAllDiscount, ItemAllLimit, ItemMemberDiscount, ItemMemberLimit,
                                             ItemStartDay, ItemEndDay, ItemImage, ItemLastUpdate);
-                                    break;
-
-                                case 1:
-                                    // Login Error: Email changed/Account deleted
-                                    // Go to Login
-                                    loadingDialog.Dismiss();
-                                    messageDialog.Show("error", "Your account might has been deleted or your email has been changed."); // Display error message
-                                    Button btn_close = messageDialog.dialog.findViewById(R.id.btn_close_msg);
-                                    btn_close.setOnClickListener(new View.OnClickListener() {
-                                        @Override
-                                        public void onClick(View view) {
-                                            messageDialog.Dismiss();
-                                            startActivity(new Intent(Store_Home.this, Login.class));
-                                        }
-                                    });
-                                    break;
-
-                                case 2:
-                                    // Login Error: Password changed
-                                    // Go to Login
-                                    loadingDialog.Dismiss();
-                                    messageDialog.Show("error", "Your password has been changed."); // Display error message
-                                    Button btn_close2 = messageDialog.dialog.findViewById(R.id.btn_close_msg);
-                                    btn_close2.setOnClickListener(new View.OnClickListener() {
-                                        @Override
-                                        public void onClick(View view) {
-                                            messageDialog.Dismiss();
-                                            startActivity(new Intent(Store_Home.this, Login.class));
-                                        }
-                                    });
-                                    break;
-
-                                default:
-                                    // Login error: No Internet Connection
-                                    loadingDialog.Dismiss();
-                                    messageDialog.Show("error", "No Internet Connection"); // Display error message
-                                    Button btn_close3 = messageDialog.dialog.findViewById(R.id.btn_close_msg);
-                                    btn_close3.setOnClickListener(new View.OnClickListener() {
-                                        @Override
-                                        public void onClick(View view) {
-                                            messageDialog.Dismiss();
-                                        }
-                                    });
-                            }
+                                } catch (Exception e) {
+                                    messageDialog.Show("error", "Could not load store data.");
+                                    Button close = messageDialog.dialog.findViewById(R.id.btn_close_msg);
+                                    close.setOnClickListener(v -> messageDialog.Dismiss());
+                                }
+                                break;
+                            case 1:
+                                messageDialog.Show("error", "Your store is waiting for approval in Firebase Console.");
+                                Button pendingClose = messageDialog.dialog.findViewById(R.id.btn_close_msg);
+                                pendingClose.setOnClickListener(v -> {
+                                    messageDialog.Dismiss();
+                                    startActivity(new Intent(Store_Home.this, Login.class));
+                                    finish();
+                                });
+                                break;
+                            case 2:
+                                startActivity(new Intent(Store_Home.this, Login.class));
+                                finish();
+                                break;
+                            default:
+                                messageDialog.Show("error", "Could not connect to Firebase. Please try again.");
+                                Button close = messageDialog.dialog.findViewById(R.id.btn_close_msg);
+                                close.setOnClickListener(v -> messageDialog.Dismiss());
                         }
-                    });
-                } catch (final Exception ex) {}
+                    }
+                });
             }
         }.start();
     }

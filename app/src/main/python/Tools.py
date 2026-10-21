@@ -1,16 +1,11 @@
 import re
 import random
-from email.message import EmailMessage
-import ssl
-import smtplib
-from pdf_mail import sendpdf
 from fpdf import FPDF
 import qrcode
 import PyPDF2
 import os
 from os.path import dirname, join
 from datetime import date, datetime, time
-from cryptography.fernet import Fernet
 from uuid import uuid4
 
 regex = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
@@ -19,15 +14,10 @@ Lower = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "
 Number = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]
 AllowedSymbol = ["!", "@", "#", "_", "$", "%", "*"]
 
-email_sender = os.environ.get("MYPRICE_EMAIL_SENDER", "")
-email_password = os.environ.get("MYPRICE_EMAIL_PASSWORD", "")
 
-key = os.environ.get("MYPRICE_QR_FERNET_KEY", "").encode("ascii")
 
 def EncryptData(Value):
-    crypter = Fernet(key)
-    EncryptedContent = crypter.encrypt(str(Value).encode("ascii"))
-    return str(EncryptedContent, "utf-8")
+    return str(Value)
 
 def OutputDirectory():
     path = join(os.environ["HOME"], "MyPriceOutput")
@@ -83,9 +73,7 @@ def generatePDF(ID, Name, Location):
 
 ############################ Callable Functions ###########################
 def DecryptData(Value):
-    crypter2 = Fernet(key.encode("ascii"))
-    DecryptedContent = crypter2.decrypt(Value.encode("ascii"))
-    return str(DecryptedContent, "utf-8")
+    return str(Value)
 
 def GetDoubleForm(RMamount):
     amount = RMamount.strip("RM")
@@ -124,11 +112,9 @@ def registrationValidation(store_name, location, email, password, confirm_passwo
         validation[3] = False
         ErrorMessage += "1"
 
-    if len(key) != 19:
-        validation[4] = False
-        ErrorMessage += "1"
-    else:
-        ErrorMessage += "0"
+    # The old paid registration key database no longer exists. This field is an
+    # optional reference for the manual store approval request.
+    ErrorMessage += "0"
 
     if False not in validation:
         return "Valid"
@@ -138,7 +124,7 @@ def registrationValidation(store_name, location, email, password, confirm_passwo
 def StoreNameAndLocationValidation(StoreName, Location):
     ErrorMessage = ""
     validation = [True, True]
-    if StoreName == "":
+    if StoreName == "" or len(StoreName) > 100:
         ErrorMessage += "1"
         validation[0] = False
     elif StoreName[0] == " ":
@@ -147,7 +133,7 @@ def StoreNameAndLocationValidation(StoreName, Location):
     else:
         ErrorMessage += "0"
 
-    if Location == "":
+    if Location == "" or len(Location) > 200:
         ErrorMessage += "1"
         validation[1] = False
     elif Location[0] == " ":
@@ -221,46 +207,7 @@ def GenerateRequestCode():
     return Code
 
 def SendVerificationCode(email_receiver, VerificationCode, RequestCode, request_type):
-    username = ""
-    for i in email_receiver:
-        if i == "@":
-            break
-        username += i
-
-    if request_type == "register":
-        subject = "Single-use verification code"
-        body = "Hi " + username + ",\n\nWe received your request for a verification code for the account registration. This is the verification details:\n\n"\
-               + "Request Code: " + str(RequestCode) + "\nVerification Code: " + str(VerificationCode) + "\n\nIf you didn't request this code, you can safely ignore "\
-               + "this email. Someone else might have typed your email address by mistake. \n\nThanks,\nMyPrice."
-
-    elif request_type == "changeEmail":
-        subject = "Single-use verification code"
-        body = "Hi " + username + ",\n\nWe received your request for a verification code to verify a new email for your MyPrice's account. This is the verification details:\n\n"\
-               + "Request Code: " + str(RequestCode) + "\nVerification Code: " + str(VerificationCode) + "\n\nIf you didn't request this code, you can safely ignore "\
-               + "this email. Someone else might have typed your email address by mistake. \n\nThanks,\nMyPrice."
-        
-    elif request_type == "resetPassword":
-        subject = "Reset Password Request"
-        body = "Hi " + username + ".\n\n" + "We received a reset password request from you. This is your reset password verification details: \n\nRequest Code: "\
-               + str(RequestCode) + "\nVerification Code: " + str(VerificationCode) + "\n\nPlease ignore this if you did not perform the password reset request. Someone else might "\
-               + "have typed your email address by mistake. \n\nThanks,\nMyPrice."
-    else:
-        subject = "Delete Account Request"
-        body = "Hi " + username + ".\n\n" + "We received a delete account request from you. This is your delete account verification details: \n\nRequest Code: "\
-               + str(RequestCode) + "\nVerification Code: " + str(VerificationCode) + "\n\nPlease ignore this if you did not perform the delete account request. Someone else might "\
-               + "trying to delete your account. Please make sure to update your password frequently.\n\nThanks,\nMyPrice."
-
-    em = EmailMessage()
-    em['From'] = email_sender
-    em['To'] = email_receiver
-    em['Subject'] = subject
-    em.set_content(body)
-
-    context = ssl.create_default_context()
-
-    with smtplib.SMTP_SSL('smtp.gmail.com', 465, context=context) as smtp:
-        smtp.login(email_sender, email_password)
-        smtp.sendmail(email_sender, email_receiver, em.as_string())
+    raise RuntimeError("Use Firebase Authentication email verification")
 
 def GenerateUniqueID():
     char = Upper + Number
@@ -273,95 +220,13 @@ def GenerateUniqueID():
     return ID
 
 def Send_QRcode_To_User(ID, StoreName, Location, email_receiver, password, Type):
-    GenerateQRcode(ID)
-    generatePDF(ID, StoreName, Location)
-    
-    username = ""
-    for i in email_receiver:
-        if i == "@":
-              break
-        username += i
-
-    hidePassword = ""
-    i = 0
-    while i < len(password):
-        if i < len(password) - 2:
-            hidePassword += "*"
-        else:
-            hidePassword += password[i]
-        i += 1
-
-    if Type == "register":
-        subject = "Registration completed!"
-        body = "Hi, " + username + ".\n\nFirst of all, thanks a lot for registering your account. This is your registration detail: \n\nStore ID: " + ID + "\nStore Name: " + StoreName + "\nLocation: " \
-                "" + Location + "\nEmail: " + email_receiver + "\nPassword: " + hidePassword + "\n\nThis email came with your store unique QR code. Don't " \
-                "forget to print out and paste on the wall in your store. Together we create a better future!\n\nThanks,\nMyPrice."
-    else:
-        subject = "Your Unique QR Code"
-        body = "Hi, " + username + ".\n\nThis is your store unique QR code and your store ID is " + ID + ". Don't forget to print out and paste on the wall in your store. Together we create a better future!\n\nThanks,\nMyPrice."
-    
-    path = OutputDirectory()
-
-    send = sendpdf(email_sender, email_receiver, email_password, subject, body, "Your Unique QR Code", path)
-    send.email_send()
+    raise RuntimeError("Use the in-app store QR code")
 
 def SendAccountChangedInformation(Type, StoreName, Location, Email, email_receiver):
-    username = ""
-    for i in email_receiver:
-        if i == "@":
-            break
-        username += i
-
-    subject = "Account information has been updated"
-
-    if Type == "StoreInformation":
-        body = "Hey " + username + "!\n\nWe would like to inform you that your store name has been changed to " + str(StoreName) + " and your store location has been changed to " + \
-               str(Location) + ". Please click the button 'Generate Unique QR Code' in the Account page to get a new updated Unique QR Code for your store.\n\nIf you did not changed " + \
-               "any store information recently, you are advised to change the password as soon as possible. Someone else might know your password then logged into your account and " + \
-               "change the store information.\n\nThanks,\nMyPrice."
-    elif Type == "Email":
-        body = "Hey " + username + "!\n\nWe would like to inform you that your MyPrice account's email has been changed to " + str(Email) + ". This email (" + str(email_receiver) + ") will not longer " + \
-               "used as your MyPrice account's email.\n\n If you did not changed your MyPrice account's email, you are advised to contact our tech support for the further actions. " + \
-               "Someone else might know you password then logged into your account and change the email.\n\nThanks,\nMyPrice."
-    else:
-        body = "Hey " + username + "!\n\nWe would like to inform you that your MyPrice account's password has been changed.\n\nIf you did not changed your MyPrice account's password, " + \
-               "you are advised to contact our tech support for the further actions. Someone else might know you password then logged into your account and change the email.\n\nThanks,\nMyPrice."
-
-    em = EmailMessage()
-    em['From'] = email_sender
-    em['To'] = email_receiver
-    em['Subject'] = subject
-    em.set_content(body)
-
-    context = ssl.create_default_context()
-
-    with smtplib.SMTP_SSL('smtp.gmail.com', 465, context=context) as smtp:
-        smtp.login(email_sender, email_password)
-        smtp.sendmail(email_sender, email_receiver, em.as_string())
+    raise RuntimeError("Use Firebase Authentication notifications")
 
 def SendDeletingAccountInformation(email_receiver):
-    username = ""
-    for i in email_receiver:
-        if i == "@":
-            break
-        username += i
-
-    subject = "Your account has been deleted"
-
-    body = "Hi " + username + ".\n\nWe need to inform you that your account has been deleted permanently. Feel free to share your complains or suggested improvements to help us to improve" +\
-           " our application. We always welcoming you back to be a part of MyPrice's store manager./n/nThanks,\nMyPrice."
-    
-    em = EmailMessage()
-    em['From'] = email_sender
-    em['To'] = email_receiver
-    em['Subject'] = subject
-    em.set_content(body)
-
-    context = ssl.create_default_context()
-
-    with smtplib.SMTP_SSL('smtp.gmail.com', 465, context=context) as smtp:
-        smtp.login(email_sender, email_password)
-        smtp.sendmail(email_sender, email_receiver, em.as_string())
+    raise RuntimeError("Client-side email sending is disabled")
 
 def ItemRegistrationValidation(barcode, name, price):
     validation = [True, True, True]

@@ -39,7 +39,7 @@ public class ManualEnterQR extends AppCompatActivity {
                 if (!et_input.getText().toString().equals("")) {
                     hideKeyboard(ManualEnterQR.this);
                     Intent i = new Intent(ManualEnterQR.this, Home.class);
-                    i.putExtra("result", et_input.getText().toString().toUpperCase());
+                    i.putExtra("result", et_input.getText().toString().trim());
                     startActivity(i);
                 }
             }
