@@ -19,3 +19,7 @@ The debug APK is generated at `app/build/outputs/apk/debug/app-debug.apk`. A suc
 ## Before real use
 
 The historical design runs Firebase Admin and SMTP operations inside the Android app. Do not put new service-account or email credentials into an APK. Move those operations to a trusted backend, use Firebase client authentication and database rules, and replace reversible password storage. Revoke or rotate the credentials from the old project because they were embedded in its source and APK. See [PROJECT_REVIEW.md](PROJECT_REVIEW.md) for the review findings.
+
+## License
+
+The original MyPrice project source is available under the [MIT License](LICENSE). Third-party dependencies and assets retain their own licenses.
