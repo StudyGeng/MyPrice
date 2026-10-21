@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/checkout_w"
+    android:orientation="vertical"
+    tools:context=".Checkout">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#DAFFFFFF"
+        android:gravity="center"
+        android:orientation="vertical">
+
+        <ImageView
+            android:id="@+id/imageView4"
+            android:layout_width="200dp"
+            android:layout_height="200dp"
+            android:layout_marginTop="-100dp"
+            app:srcCompat="@drawable/logo" />
+
+        <TextView
+            android:id="@+id/tv_totalprice_co"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Total Price: RMxx.xx"
+            android:textColor="@color/black"
+            android:textSize="26sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/tv_totalitem_co"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Total Item: 22"
+            android:textColor="@color/black"
+            android:textSize="26sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/tv_spend_co"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="You spent 90% of"
+            android:textColor="@color/black"
+            android:textSize="20sp" />
+
+        <TextView
+            android:id="@+id/textView13"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="-5dp"
+            android:text="your shopping budget"
+            android:textColor="@color/black"
+            android:textSize="20sp" />
+
+        <TextView
+            android:id="@+id/tv_storename_co"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="-5dp"
+            android:text="in JustForFun Store."
+            android:textColor="@color/black"
+            android:textSize="20sp" />
+
+        <TextView
+            android:id="@+id/textView15"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="Thanks for shopping with MyPrice!"
+            android:textColor="@color/black"
+            android:textSize="20sp" />
+
+        <androidx.appcompat.widget.AppCompatButton
+            android:id="@+id/btn_detail_co"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="5dp"
+            android:background="#00EF1B1B"
+            android:backgroundTint="#00D66363"
+            android:text="Show Details"
+            android:textAllCaps="false"
+            android:textColor="#042DFB"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <androidx.cardview.widget.CardView
+            android:layout_width="60dp"
+            android:layout_height="60dp"
+            android:layout_marginTop="10dp"
+            android:background="@drawable/button4"
+            app:cardBackgroundColor="@color/green1"
+            app:cardCornerRadius="30dp">
+
+            <androidx.appcompat.widget.AppCompatButton
+                android:id="@+id/btn_home_co"
+                android:layout_width="45dp"
+                android:layout_height="45dp"
+                android:layout_gravity="center"
+                android:background="@drawable/ic_baseline_home_24"
+                android:backgroundTint="@color/black"
+                android:drawableTop="@drawable/ic_baseline_home_24"
+                android:gravity="center"
+                android:paddingTop="10dp" />
+        </androidx.cardview.widget.CardView>
+
+    </LinearLayout>
+</LinearLayout>

@@ -1,0 +1,202 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/gradient"
+    android:orientation="vertical"
+    tools:context=".Register">
+
+    <TextView
+        android:id="@+id/tv_balancetxt_cart"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingRight="10dp"
+        android:paddingBottom="10dp"
+        android:text="Register"
+        android:textAlignment="viewEnd"
+        android:textSize="34sp"
+        android:textStyle="bold|italic" />
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_gravity="center">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:gravity="center"
+            android:orientation="vertical">
+
+            <androidx.cardview.widget.CardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:layout_marginLeft="20dp"
+                android:layout_marginTop="20dp"
+                android:layout_marginRight="20dp"
+                android:layout_marginBottom="20dp"
+                app:cardCornerRadius="20dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="665dp"
+                    android:layout_marginBottom="20dp"
+                    android:orientation="vertical"
+                    android:visibility="visible">
+
+                    <ImageView
+                        android:id="@+id/imageView3"
+                        android:layout_width="169dp"
+                        android:layout_height="157dp"
+                        android:layout_gravity="center"
+                        android:layout_marginTop="10dp"
+                        app:srcCompat="@drawable/ic_user_application_identity_authentication_login_svgrepo_com" />
+
+                    <EditText
+                        android:id="@+id/et_store_register"
+                        android:layout_width="match_parent"
+                        android:layout_height="40dp"
+                        android:layout_gravity="center"
+                        android:layout_marginLeft="30dp"
+                        android:layout_marginTop="40dp"
+                        android:layout_marginRight="30dp"
+                        android:background="@drawable/button3"
+                        android:drawableLeft="@drawable/ic_baseline_store_24"
+                        android:ems="10"
+                        android:fontFamily="sans-serif"
+                        android:hint="Store Name"
+                        android:importantForAutofill="no"
+                        android:inputType="textPersonName"
+                        android:paddingLeft="10dp"
+                        android:paddingRight="10dp" />
+
+                    <EditText
+                        android:id="@+id/et_location_register"
+                        android:layout_width="match_parent"
+                        android:layout_height="40dp"
+                        android:layout_gravity="center"
+                        android:layout_marginLeft="30dp"
+                        android:layout_marginTop="20dp"
+                        android:layout_marginRight="30dp"
+                        android:background="@drawable/button3"
+                        android:drawableLeft="@drawable/ic_baseline_map_24"
+                        android:ems="10"
+                        android:fontFamily="sans-serif"
+                        android:hint="Location"
+                        android:importantForAutofill="no"
+                        android:inputType="textPersonName"
+                        android:paddingLeft="10dp"
+                        android:paddingRight="10dp" />
+
+                    <EditText
+                        android:id="@+id/et_email_register"
+                        android:layout_width="match_parent"
+                        android:layout_height="40dp"
+                        android:layout_gravity="center"
+                        android:layout_marginLeft="30dp"
+                        android:layout_marginTop="20dp"
+                        android:layout_marginRight="30dp"
+                        android:autofillHints="emailAddress"
+                        android:background="@drawable/button3"
+                        android:drawableLeft="@drawable/ic_baseline_email_24"
+                        android:ems="10"
+                        android:fontFamily="sans-serif"
+                        android:hint="Email"
+                        android:inputType="textPersonName"
+                        android:paddingLeft="10dp"
+                        android:paddingRight="10dp" />
+
+                    <com.scottyab.showhidepasswordedittext.ShowHidePasswordEditText
+                        android:id="@+id/et_password_register"
+                        android:layout_width="match_parent"
+                        android:layout_height="40dp"
+                        android:layout_gravity="center"
+                        android:layout_marginLeft="30dp"
+                        android:layout_marginTop="20dp"
+                        android:layout_marginRight="30dp"
+                        android:background="@drawable/button3"
+                        android:drawableLeft="@drawable/ic_baseline_lock_24"
+                        android:ems="10"
+                        android:fontFamily="sans-serif"
+                        android:hint="Password"
+                        android:importantForAutofill="no"
+                        android:inputType="textPassword"
+                        android:longClickable="false"
+                        android:paddingLeft="10dp"
+                        android:paddingRight="10dp" />
+
+                    <com.scottyab.showhidepasswordedittext.ShowHidePasswordEditText
+                        android:id="@+id/et_confrimpaswword_register"
+                        android:layout_width="match_parent"
+                        android:layout_height="40dp"
+                        android:layout_gravity="center"
+                        android:layout_marginLeft="30dp"
+                        android:layout_marginTop="20dp"
+                        android:layout_marginRight="30dp"
+                        android:background="@drawable/button3"
+                        android:drawableLeft="@drawable/ic_baseline_lock_24"
+
+                        android:ems="10"
+                        android:fontFamily="sans-serif"
+                        android:hint="Confirm Password"
+                        android:importantForAutofill="no"
+                        android:inputType="textPassword"
+                        android:longClickable="false"
+                        android:paddingLeft="10dp"
+                        android:paddingRight="10dp" />
+
+
+                    <EditText
+                        android:id="@+id/et_key_register"
+                        android:layout_width="match_parent"
+                        android:layout_height="40dp"
+                        android:layout_gravity="center"
+                        android:layout_marginLeft="30dp"
+                        android:layout_marginTop="20dp"
+                        android:layout_marginRight="30dp"
+                        android:background="@drawable/button3"
+                        android:drawableLeft="@drawable/ic_baseline_vpn_key_24"
+
+                        android:ems="10"
+                        android:fontFamily="sans-serif"
+                        android:hint="Registration Key"
+                        android:importantForAutofill="no"
+                        android:inputType="text"
+                        android:longClickable="false"
+                        android:maxLength="19"
+                        android:paddingLeft="10dp"
+                        android:paddingRight="10dp" />
+
+                    <androidx.appcompat.widget.AppCompatButton
+                        android:id="@+id/btn_register_register"
+                        android:layout_width="229dp"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="center"
+                        android:layout_marginTop="25dp"
+                        android:background="@drawable/enterdata"
+                        android:backgroundTint="@color/lightgreen"
+                        android:gravity="center"
+                        android:text="Register"
+                        android:textColor="@color/black"
+                        android:textSize="16sp" />
+
+                    <androidx.appcompat.widget.AppCompatButton
+                        android:id="@+id/btn_login_register"
+                        android:layout_width="wrap_content"
+                        android:layout_height="30dp"
+                        android:layout_gravity="center"
+                        android:background="#00FF0E0E"
+                        android:text="Already registered? Login now."
+                        android:textAllCaps="false"
+                        android:textColor="#042DFB" />
+
+                </LinearLayout>
+            </androidx.cardview.widget.CardView>
+        </LinearLayout>
+    </ScrollView>
+
+</LinearLayout>

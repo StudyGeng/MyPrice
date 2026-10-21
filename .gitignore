@@ -1,0 +1,33 @@
+# Local development and build output
+.gradle/
+.idea/
+**/build/
+**/local.properties
+*.iml
+.externalNativeBuild/
+.cxx/
+
+# Generated packages and signing material
+*.apk
+*.aab
+*.jks
+*.keystore
+*.p12
+*.pfx
+
+# Python caches and local data
+**/__pycache__/
+*.py[cod]
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+
+# Credentials must never be committed
+**/*firebase-adminsdk*.json
+app/src/main/python/Data/*.json
+.env
+*.env
+
+# Older incomplete project copy
+/MyPrice/

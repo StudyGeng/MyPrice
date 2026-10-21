@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    tools:context=".ManualEnterQR">
+
+    <androidx.cardview.widget.CardView
+        android:layout_width="match_parent"
+        android:layout_height="50dp"
+        app:cardBackgroundColor="#89FF00">
+
+        <ImageButton
+            android:id="@+id/btn_back_meqr"
+            android:layout_width="30dp"
+            android:layout_height="30dp"
+            android:layout_gravity="center|left"
+            android:layout_marginLeft="10dp"
+            android:background="#00975959"
+            app:srcCompat="@drawable/ic_baseline_arrow_back_24" />
+
+        <ImageButton
+            android:id="@+id/btn_submit_meqr"
+            android:layout_width="30dp"
+            android:layout_height="30dp"
+            android:layout_gravity="center|right"
+            android:layout_marginRight="10dp"
+            android:background="#00CF4444"
+            app:srcCompat="@drawable/ic_baseline_check_24" />
+
+    </androidx.cardview.widget.CardView>
+
+    <com.google.android.material.textfield.TextInputLayout
+        android:id="@+id/text_input_layout2"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+
+        <EditText
+            android:id="@+id/et_qrcode_meqr"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="#FBFBFB"
+            android:hint="Store Unique Code"
+            android:inputType="text"
+            android:singleLine="true"
+            android:textSize="20sp" />
+
+    </com.google.android.material.textfield.TextInputLayout>
+    <TextView
+        android:id="@+id/textView8"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginLeft="5dp"
+        android:layout_marginRight="5dp"
+        android:text="You are advised to ask the store employee to help you for entering the store unique code." />
+
+</LinearLayout>
